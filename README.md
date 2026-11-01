@@ -31,6 +31,23 @@ Configuration and build require no downloads at this stage.
 
 ## Structure and decisions
 
+### VS Code IntelliSense
+
+Open `Search-Engine` as the workspace folder. The committed `.vscode/settings.json`
+selects C++20 and reads compiler flags, defines and include paths from
+`build/debug/compile_commands.json`. Run `cmake --preset debug` to generate it.
+The compiler and public include directory are also specified as fallbacks for
+headers that are not yet associated with a translation unit. System include paths
+are discovered from `g++`; do not copy standard library headers into the project.
+
+After changing editor settings, run **C/C++: Reset IntelliSense Database** from
+the Command Palette. If diagnostics remain stale, run **Developer: Reload Window**.
+Use **C/C++: Log Diagnostics** to check the selected compiler and language standard.
+When opening a parent folder instead, its workspace settings must point to the
+nested project's compilation database; nested `.vscode` settings are not applied.
+
+### Source layout
+
 - `CMakeLists.txt`: project version, required language standard and CTest setup.
 - `CMakePresets.json`: separate Debug/Release directories and Ninja/GCC selection.
 - `crawler/include/hfs/`: public interfaces of the crawler library.

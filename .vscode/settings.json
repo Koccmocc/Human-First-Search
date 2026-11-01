@@ -1,0 +1,9 @@
+{
+    "cmake.useCMakePresets": "always",
+    "C_Cpp.default.compilerPath": "g++",
+    "C_Cpp.default.cppStandard": "c++20",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/debug/compile_commands.json",
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/crawler/include"
+    ]
+}
