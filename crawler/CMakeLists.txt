@@ -18,10 +18,14 @@ endforeach()
 
 if(BUILD_TESTING)
     add_executable(html_document_test tests/html_document_test.cpp)
-    target_link_libraries(html_document_test PRIVATE crawler_core)
+    target_link_libraries(html_document_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(html_document_test PRIVATE -Wall -Wextra -Wpedantic)
-    add_test(NAME crawler.html_document COMMAND html_document_test)
-    set_tests_properties(crawler.html_document PROPERTIES TIMEOUT 10)
+    # Let CTest report and filter each GoogleTest case separately.
+    gtest_discover_tests(html_document_test
+        TEST_PREFIX "crawler."
+        DISCOVERY_TIMEOUT 15
+        PROPERTIES TIMEOUT 10
+    )
 
     # Validate the C API from C++ before building extraction logic on top of it.
     add_executable(html_parser_test tests/html_parser_test.cpp)

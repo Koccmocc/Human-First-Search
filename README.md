@@ -30,6 +30,8 @@ All project targets use standard C++20 without GNU language extensions.
 Git and network access are needed on first configuration to download the pinned
 Lexbor HTML parser. It is built from C with `gcc`; the crawler uses `g++`.
 See [the parser decision](docs/html-parser.md) for the version, license and offline override.
+With `BUILD_TESTING=ON` (the preset default), configuration also downloads the
+pinned GoogleTest 1.18.0 source. It is not needed by the application itself.
 
 ## Structure and decisions
 
@@ -85,6 +87,27 @@ Documents cannot be copied, but can be moved. A moved-from document has an empty
 title and can be destroyed or assigned to. An opaque `Impl` keeps the C API private;
 its `unique_ptr` releases the DOM on normal exit and on construction failure.
 Tests cover input/title lifetimes, moves, absent titles, whitespace and entities.
+
+### Unit tests
+
+`cmake/Testing.cmake` pins GoogleTest 1.18.0 to commit
+`063de7e9578f82b369302001269680b4b1553359`. Its
+[BSD-3-Clause license](https://github.com/google/googletest/blob/063de7e9578f82b369302001269680b4b1553359/LICENSE)
+must be preserved when redistributing the dependency. GoogleMock is disabled.
+GoogleTest is downloaded and configured only when `BUILD_TESTING` is enabled.
+For offline configuration, supply `FETCHCONTENT_SOURCE_DIR_GOOGLETEST` pointing
+to a verified checkout of that revision, as with the Lexbor source override.
+
+`TEST(HtmlDocument, CaseName)` defines one independent scenario. `EXPECT_EQ` and
+`EXPECT_TRUE` report failures without stopping the scenario; use `ASSERT_*` when
+continuing after a failed prerequisite would be invalid. `GTest::gtest_main`
+provides the test runner, so these tests need no custom `main` or failure counter.
+`gtest_discover_tests` registers each case with CTest; both Debug and Release run
+the same checks. The direct Lexbor smoke test and CLI process test are unchanged.
+
+```powershell
+ctest --preset debug -R HtmlDocument
+```
 
 The CLI still only supports help and version. Main-text extraction, local file
 input and JSONL export will follow in separate changes.

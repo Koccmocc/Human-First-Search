@@ -19,4 +19,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
 include(cmake/HtmlParser.cmake)
+if(BUILD_TESTING)
+    include(cmake/Testing.cmake)
+endif()
 add_subdirectory(crawler)
