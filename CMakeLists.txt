@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(HumanFirstSearch VERSION 0.1.0 LANGUAGES CXX)
+# Lexbor is written in C; our crawler remains C++20.
+project(HumanFirstSearch VERSION 0.1.0 LANGUAGES C CXX)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "Use an out-of-source build: cmake --preset debug")
@@ -17,4 +18,5 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
+include(cmake/HtmlParser.cmake)
 add_subdirectory(crawler)

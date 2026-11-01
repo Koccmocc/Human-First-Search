@@ -27,7 +27,9 @@ runtime DLLs can be found. Do not mix different MinGW installations.
 
 Presets select `g++` from `PATH`, without machine-specific absolute paths.
 All project targets use standard C++20 without GNU language extensions.
-Configuration and build require no downloads at this stage.
+Git and network access are needed on first configuration to download the pinned
+Lexbor HTML parser. It is built from C with `gcc`; the crawler uses `g++`.
+See [the parser decision](docs/html-parser.md) for the version, license and offline override.
 
 ## Structure and decisions
 
@@ -72,4 +74,6 @@ which is normally disabled in Release. `compile_commands.json` is generated in
 each build directory for editor tooling. Local overrides belong in the ignored
 `CMakeUserPresets.json`; generated builds and corpus data are also ignored.
 
-The next increment is local HTML-to-JSONL conversion with fixture-based checks.
+Lexbor is currently exercised by a C++ compatibility test; the CLI still only
+supports help and version. The next increment is a small HTML document wrapper,
+followed by local extraction and JSONL export in separate changes.

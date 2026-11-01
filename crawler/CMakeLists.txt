@@ -16,6 +16,13 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    # Validate the C API from C++ before building extraction logic on top of it.
+    add_executable(html_parser_test tests/html_parser_test.cpp)
+    target_link_libraries(html_parser_test PRIVATE lexbor_static)
+    target_compile_options(html_parser_test PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME crawler.html_parser COMMAND html_parser_test)
+    set_tests_properties(crawler.html_parser PROPERTIES TIMEOUT 10)
+
     add_test(NAME crawler.cli
         COMMAND "${CMAKE_COMMAND}"
             "-DCRAWLER=$<TARGET_FILE:hfs-crawler>"
