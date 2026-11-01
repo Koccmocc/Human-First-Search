@@ -74,6 +74,17 @@ which is normally disabled in Release. `compile_commands.json` is generated in
 each build directory for editor tooling. Local overrides belong in the ignored
 `CMakeUserPresets.json`; generated builds and corpus data are also ignored.
 
-Lexbor is currently exercised by a C++ compatibility test; the CLI still only
-supports help and version. The next increment is a small HTML document wrapper,
-followed by local extraction and JSONL export in separate changes.
+`hfs::HtmlDocument` now owns a Lexbor DOM inside `crawler_core`. Its public header
+does not expose Lexbor types. Construct it from UTF-8 HTML and call `title()` for
+an owning string with decoded entities and normalized title whitespace. Missing
+titles return an empty string. The input buffer may be released after construction.
+Lexbor failures throw `std::runtime_error`; C++ allocation may throw `std::bad_alloc`.
+Malformed markup is handled by the HTML parser and is not automatically a failure.
+
+Documents cannot be copied, but can be moved. A moved-from document has an empty
+title and can be destroyed or assigned to. An opaque `Impl` keeps the C API private;
+its `unique_ptr` releases the DOM on normal exit and on construction failure.
+Tests cover input/title lifetimes, moves, absent titles, whitespace and entities.
+
+The CLI still only supports help and version. Main-text extraction, local file
+input and JSONL export will follow in separate changes.

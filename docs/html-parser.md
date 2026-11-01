@@ -38,7 +38,9 @@ cmake --preset debug -DFETCHCONTENT_SOURCE_DIR_LEXBOR=C:/path/to/lexbor
 The caller must verify the revision for such an override. Do not commit a local
 absolute path. Omit the override for the ordinary pinned download.
 
-The parser is currently linked only to the compatibility test. The next increment
-will wrap its document ownership for extraction. Finding main article content,
+The parser is now a private dependency of `crawler_core`, wrapped by
+`hfs::HtmlDocument`. The public C++ header hides its C types; document ownership
+and title extraction are tested separately from the direct C API smoke test.
+Finding main article content,
 excluding navigation/scripts, resolving links and handling source encodings are
 separate tasks; successfully building a DOM does not solve them.
