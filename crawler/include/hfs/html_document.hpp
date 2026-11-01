@@ -22,6 +22,10 @@ public:
     // Missing titles and moved-from documents produce an empty string.
     [[nodiscard]] auto title() const -> std::string;
 
+    // Extracts body text, not main-article text or CSS-computed visible text.
+    // Block boundaries become newlines; inline markup adds no extra spaces.
+    [[nodiscard]] auto body_text() const -> std::string;
+
 private:
     // Hide Lexbor types so callers do not depend on its headers or allocation API.
     struct Impl;

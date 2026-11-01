@@ -109,5 +109,22 @@ the same checks. The direct Lexbor smoke test and CLI process test are unchanged
 ctest --preset debug -R HtmlDocument
 ```
 
-The CLI still only supports help and version. Main-text extraction, local file
-input and JSONL export will follow in separate changes.
+### Body text
+
+`HtmlDocument::body_text()` returns an owning UTF-8 string from the body DOM.
+It skips comments and entire `script`, `style` and `template` subtrees. Text nodes
+already contain decoded HTML entities. HTML ASCII whitespace and UTF-8 NBSP are
+collapsed; a fixed set of block elements, table cells and `br` introduce one
+newline. Leading/trailing separators are omitted. Inline markup inserts no space,
+so `Hel<b>lo</b>` remains `Hello`. Even `pre` whitespace is normalized for this
+search-oriented representation. Other Unicode spacing characters are preserved.
+
+Traversal follows DOM parent/sibling links without recursion or DOM mutation.
+Empty and moved-from documents return an empty string. Tests cover formatting,
+excluded subtrees, UTF-8 entities, result ownership, moves and deep nesting.
+
+This is structural body text, not article selection or browser-visible text:
+navigation, footers and hidden elements may remain. CSS is not evaluated and no
+JavaScript is executed. These limitations must be considered before corpus export.
+The CLI still only supports help and version. Article selection, local file input
+and JSONL export will follow in separate changes.
