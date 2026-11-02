@@ -32,6 +32,7 @@ Lexbor HTML parser. It is built from C with `gcc`; the crawler uses `g++`.
 See [the parser decision](docs/html-parser.md) for the version, license and offline override.
 With `BUILD_TESTING=ON` (the preset default), configuration also downloads the
 pinned GoogleTest 1.18.0 source. It is not needed by the application itself.
+Configuration also downloads the pinned libcurl source described below.
 
 ## Structure and decisions
 
@@ -183,3 +184,30 @@ This is a host-only policy: both HTTP and HTTPS and all ports of an allowed host
 are accepted. It does not inspect DNS/IP destinations, robots.txt or redirects.
 The crawler will need to apply scope checks before each request, including every
 redirect target. No requests or queue integration are implemented in this step.
+
+### HTTP transport dependency
+
+`cmake/HttpTransport.cmake` pins curl/libcurl 8.23.0 to commit
+`3163ec065643ba20709f190111f42c3e1fe95273` and builds a static library from source.
+The command-line curl tool, upstream tests and manuals are disabled. Generic
+CMake options are scoped inside a function so curl does not disable our tests.
+Optional compression, HTTP/2 and third-party SSH/PSL/IDN dependencies are disabled
+for the initial build. Additional protocols may remain compiled in: the future
+HTTP client must explicitly restrict transfers and redirects to HTTP(S).
+
+On Windows TLS uses Schannel and the system certificate store. On other platforms
+the configuration selects OpenSSL, requiring matching development headers and
+libraries; that path has not been tested here. Certificate verification must
+remain enabled when the client is implemented.
+
+The dependency uses the [curl license](https://github.com/curl/curl/blob/3163ec065643ba20709f190111f42c3e1fe95273/COPYING).
+Preserve its copyright and permission notice when distributing copies.
+For a verified local checkout, configure with `FETCHCONTENT_SOURCE_DIR_CURL`.
+Initial verification uses that override on MinGW-w64 GCC 15.2.0; automatic
+FetchContent network retrieval has not yet been exercised.
+
+`crawler/tests/curl_test.cpp` checks global initialization, handle creation,
+HTTP/HTTPS capabilities and the Windows TLS backend without network requests.
+libcurl is currently linked only to this compatibility test. Downloading pages,
+timeouts, response limits, TLS connections and controlled redirects are future
+HTTP-client work; the CLI's behavior is unchanged.

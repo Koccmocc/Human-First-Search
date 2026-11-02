@@ -17,6 +17,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(curl_test tests/curl_test.cpp)
+    target_link_libraries(curl_test PRIVATE CURL::libcurl_static GTest::gtest_main)
+    target_compile_options(curl_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(curl_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(url_test tests/url_test.cpp)
     target_link_libraries(url_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(url_test PRIVATE -Wall -Wextra -Wpedantic)
