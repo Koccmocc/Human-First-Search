@@ -142,3 +142,25 @@ These are raw link candidates, not validated crawl targets. Relative references,
 fragments and non-HTTP schemes remain unchanged. The method does not apply `base`,
 resolve URLs, deduplicate, check robots.txt or enforce allowed domains. A URL layer
 must do that before any link enters the crawl queue. No network requests occur.
+
+### URL resolution
+
+`hfs::resolve_http_url(base, reference)` uses Lexbor's URL parser, returning an
+owning absolute HTTP(S) URL or `std::nullopt` when parsing fails or the scheme or
+credentials are rejected. The base must itself be an absolute HTTP(S) URL without
+credentials, even when the reference is absolute. Parser initialization and
+serialization failures throw; C++ allocation failures can also propagate.
+
+The serializer removes fragments, normalizes scheme/host and default ports, and
+resolves dot segments. It preserves path case, query parameter order and repeated
+parameters. Empty and fragment-only references resolve to the current page, so a
+future visited-URL set must handle them. This is a stable parser serialization,
+not a guarantee that different URLs identify different or identical resources.
+
+This function does not check allowed hosts, robots.txt, resolve DNS, apply HTML
+`base` elements or make requests. Callers still need crawl-scope validation.
+Tests live in `crawler/tests/url_test.cpp`; run them with:
+
+```powershell
+ctest --preset debug -R crawler.Url
+```

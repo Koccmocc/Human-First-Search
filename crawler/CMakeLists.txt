@@ -1,4 +1,4 @@
-add_library(crawler_core STATIC src/cli.cpp src/html_document.cpp)
+add_library(crawler_core STATIC src/cli.cpp src/html_document.cpp src/url.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static)
@@ -17,6 +17,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(url_test tests/url_test.cpp)
+    target_link_libraries(url_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(url_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(url_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(html_document_test tests/html_document_test.cpp)
     target_link_libraries(html_document_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(html_document_test PRIVATE -Wall -Wextra -Wpedantic)
