@@ -2,6 +2,7 @@
 
 #include <lexbor/html/interfaces/document.h>
 #include <lexbor/dom/interfaces/character_data.h>
+#include <lexbor/dom/interfaces/element.h>
 
 #include <cstdint>
 #include <stdexcept>
@@ -153,6 +154,50 @@ auto HtmlDocument::body_text() const -> std::string
         node = node->next;
     }
     return output.value;
+}
+
+auto HtmlDocument::links() const -> std::vector<std::string>
+{
+    std::vector<std::string> result;
+    if (!impl_) {
+        return result;
+    }
+
+    auto* root = lxb_dom_interface_node(impl_->document.get());
+    auto* node = root->first_child;
+    while (node != nullptr) {
+        const bool html_element = node->type == LXB_DOM_NODE_TYPE_ELEMENT &&
+            node->ns == LXB_NS_HTML;
+        if (html_element && (node->local_name == LXB_TAG_A || node->local_name == LXB_TAG_AREA)) {
+            std::size_t length{};
+            const auto* href = lxb_dom_element_get_attribute(
+                lxb_dom_interface_element(node),
+                reinterpret_cast<const lxb_char_t*>("href"), 4, &length);
+            if (href != nullptr) {
+                // Copy the decoded attribute so the result can outlive the DOM.
+                result.emplace_back(reinterpret_cast<const char*>(href), length);
+            } else if (lxb_dom_element_has_attribute(lxb_dom_interface_element(node),
+                           reinterpret_cast<const lxb_char_t*>("href"), 4)) {
+                // A valueless href can have a null value while the attribute exists.
+                result.emplace_back();
+            }
+        }
+
+        // Template contents are inert; do not treat them as navigation links.
+        const bool skip = html_element && node->local_name == LXB_TAG_TEMPLATE;
+        if (!skip && node->first_child != nullptr) {
+            node = node->first_child;
+            continue;
+        }
+        while (node->next == nullptr) {
+            node = node->parent;
+            if (node == root) {
+                return result;
+            }
+        }
+        node = node->next;
+    }
+    return result;
 }
 
 } // namespace hfs

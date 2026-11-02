@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace hfs {
 
@@ -25,6 +26,10 @@ public:
     // Extracts body text, not main-article text or CSS-computed visible text.
     // Block boundaries become newlines; inline markup adds no extra spaces.
     [[nodiscard]] auto body_text() const -> std::string;
+
+    // Returns decoded href values from HTML a/area elements in document order.
+    // Keeps empty values and duplicates; URL resolution/filtering belongs elsewhere.
+    [[nodiscard]] auto links() const -> std::vector<std::string>;
 
 private:
     // Hide Lexbor types so callers do not depend on its headers or allocation API.

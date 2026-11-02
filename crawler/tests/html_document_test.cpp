@@ -137,3 +137,58 @@ TEST(HtmlDocument, DeepNestingDoesNotRequireRecursiveTraversal)
     html += "Deep text";
     EXPECT_EQ(hfs::HtmlDocument{html}.body_text(), "Deep text");
 }
+
+TEST(HtmlDocument, LinksPreserveDocumentOrderAndDuplicates)
+{
+    const hfs::HtmlDocument document{
+        "<a href='/first'>First</a><div><a href='../second'>Second</a></div>"
+        "<map><area href='/first'></map>"};
+    EXPECT_EQ(document.links(), (std::vector<std::string>{"/first", "../second", "/first"}));
+}
+
+TEST(HtmlDocument, LinksDistinguishMissingAndEmptyHref)
+{
+    const hfs::HtmlDocument document{"<a>No href</a><a href=''>Empty</a><area href>"};
+    EXPECT_EQ(document.links(), (std::vector<std::string>{"", ""}));
+    EXPECT_TRUE(hfs::HtmlDocument{std::string_view{}}.links().empty());
+}
+
+TEST(HtmlDocument, LinksDecodeEntitiesWithoutNormalizingUrls)
+{
+    const hfs::HtmlDocument document{
+        "<base href='https://example.org/'><A HREF=' /search?a=1&amp;b=2 '>Search</A>"
+        "<a href='#part'>Fragment</a><a href='mailto:a@example.org'>Mail</a>"
+        "<a href='javascript:void(0)'>Action</a>"};
+    EXPECT_EQ(document.links(), (std::vector<std::string>{
+        " /search?a=1&b=2 ", "#part", "mailto:a@example.org", "javascript:void(0)"}));
+}
+
+TEST(HtmlDocument, LinksIgnoreResourcesTemplatesAndForeignAnchors)
+{
+    const hfs::HtmlDocument document{
+        "<link href='/style.css'><body><img src='/image.png'>"
+        "<template><a href='/inert'>Inert</a></template>"
+        "<script>const html = '<a href=\"/script\">';</script>"
+        "<!-- <a href='/comment'> -->"
+        "<svg><a href='/svg'>SVG</a></svg><a href='/page'>Page</a>"};
+    EXPECT_EQ(document.links(), (std::vector<std::string>{"/page"}));
+}
+
+TEST(HtmlDocument, LinksOutliveDocument)
+{
+    std::vector<std::string> links;
+    {
+        const hfs::HtmlDocument document{"<a href='/saved'>Saved</a>"};
+        links = document.links();
+        EXPECT_EQ(document.links(), links);
+    }
+    EXPECT_EQ(links, (std::vector<std::string>{"/saved"}));
+}
+
+TEST(HtmlDocument, LinksFollowDocumentMoves)
+{
+    hfs::HtmlDocument source{"<a href='/moved'>Moved</a>"};
+    auto target = std::move(source);
+    EXPECT_TRUE(source.links().empty());
+    EXPECT_EQ(target.links(), (std::vector<std::string>{"/moved"}));
+}

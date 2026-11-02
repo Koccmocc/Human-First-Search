@@ -128,3 +128,17 @@ navigation, footers and hidden elements may remain. CSS is not evaluated and no
 JavaScript is executed. These limitations must be considered before corpus export.
 The CLI still only supports help and version. Article selection, local file input
 and JSONL export will follow in separate changes.
+
+### Link candidates
+
+`HtmlDocument::links()` returns owning strings from `href` on HTML `a` and `area`
+elements, in DOM order. Missing attributes are skipped; empty and valueless
+attributes produce empty strings. Duplicates and attribute whitespace are retained.
+HTML entities are decoded by Lexbor. Templates and foreign elements such as SVG
+anchors are excluded; resource elements such as `link` and `img` are not crawled.
+Moved-from documents return an empty vector.
+
+These are raw link candidates, not validated crawl targets. Relative references,
+fragments and non-HTTP schemes remain unchanged. The method does not apply `base`,
+resolve URLs, deduplicate, check robots.txt or enforce allowed domains. A URL layer
+must do that before any link enters the crawl queue. No network requests occur.
