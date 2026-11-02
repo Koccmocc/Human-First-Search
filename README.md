@@ -164,3 +164,22 @@ Tests live in `crawler/tests/url_test.cpp`; run them with:
 ```powershell
 ctest --preset debug -R crawler.Url
 ```
+
+### Allowed hosts
+
+`http_url_host(url)` extracts a canonical host from an absolute, credential-free
+HTTP(S) URL. It returns no port: `https://EXAMPLE.org:8443/path` yields `example.org`.
+IDNs are serialized as ASCII, IPv6 literals retain brackets. Invalid URLs and
+unsupported schemes return `std::nullopt`; initialization/serialization failures
+can throw, as with URL resolution.
+
+`is_allowed_host(url, allowed_hosts)` compares that parsed host to an explicit
+list of canonical host strings. Prepare entries with `http_url_host` rather than
+passing full URLs, wildcards or unnormalized names. Empty lists deny all hosts.
+Subdomains must be listed separately; `example.org.evil.com` and `example.org.`
+do not match `example.org`. Path, query and user-info cannot supply a match.
+
+This is a host-only policy: both HTTP and HTTPS and all ports of an allowed host
+are accepted. It does not inspect DNS/IP destinations, robots.txt or redirects.
+The crawler will need to apply scope checks before each request, including every
+redirect target. No requests or queue integration are implemented in this step.

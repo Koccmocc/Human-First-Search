@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -10,5 +11,13 @@ namespace hfs {
 // Reject parser failures, other schemes and credentials. No network access occurs.
 [[nodiscard]] auto resolve_http_url(std::string_view base, std::string_view reference)
     -> std::optional<std::string>;
+
+// Return the parser's canonical host (without port), e.g. example.org or [::1].
+[[nodiscard]] auto http_url_host(std::string_view url) -> std::optional<std::string>;
+
+// Entries must be canonical hosts, as returned by http_url_host(). Empty denies all.
+// Subdomains and trailing dots remain distinct. This host-only policy ignores ports.
+[[nodiscard]] auto is_allowed_host(std::string_view url,
+                                  std::span<const std::string_view> allowed_hosts) -> bool;
 
 } // namespace hfs

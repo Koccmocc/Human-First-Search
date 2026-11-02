@@ -1,6 +1,7 @@
 #include "hfs/url.hpp"
 
 #include <gtest/gtest.h>
+#include <array>
 
 namespace {
 constexpr std::string_view base = "https://example.org/dir/page?old=1#old";
@@ -55,4 +56,54 @@ TEST(Url, RequiresValidBaseAndRejectsCredentials)
     EXPECT_FALSE(hfs::resolve_http_url("file:///tmp/", "https://example.org/"));
     EXPECT_FALSE(hfs::resolve_http_url(base, "https://user:pass@example.org/"));
     EXPECT_FALSE(hfs::resolve_http_url("https://user@example.org/", "/page"));
+}
+
+TEST(Url, ExtractsCanonicalHostWithoutPort)
+{
+    EXPECT_EQ(hfs::http_url_host("HTTPS://EXAMPLE.ORG:8443/path?query#part"), "example.org");
+    EXPECT_EQ(hfs::http_url_host("http://[::1]:8080/"), "[::1]");
+    EXPECT_EQ(hfs::http_url_host("https://127.0.0.1/"), "127.0.0.1");
+    EXPECT_EQ(hfs::http_url_host("https://caf%C3%A9.example/"), "xn--caf-dma.example");
+}
+
+TEST(Url, HostExtractionRejectsInvalidOrUnusableUrls)
+{
+    EXPECT_FALSE(hfs::http_url_host("/relative"));
+    EXPECT_FALSE(hfs::http_url_host("https://[bad"));
+    EXPECT_FALSE(hfs::http_url_host("file:///tmp/page"));
+    EXPECT_FALSE(hfs::http_url_host("https://user:pass@example.org/"));
+}
+
+TEST(Url, AllowlistMatchesExactCanonicalHost)
+{
+    constexpr std::array<std::string_view, 2> hosts{"example.org", "docs.example.net"};
+    EXPECT_TRUE(hfs::is_allowed_host("https://EXAMPLE.ORG/page", hosts));
+    EXPECT_TRUE(hfs::is_allowed_host("http://docs.example.net/", hosts));
+    EXPECT_TRUE(hfs::is_allowed_host("https://example.org:8443/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://sub.example.org/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://example.org.evil.com/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://notexample.org/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://example.org./", hosts));
+}
+
+TEST(Url, AllowlistDoesNotMatchHostNamesInOtherUrlComponents)
+{
+    constexpr std::array<std::string_view, 1> hosts{"example.org"};
+    EXPECT_FALSE(hfs::is_allowed_host("https://evil.com/example.org?host=example.org", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://example.org@evil.com/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://user@example.org/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("javascript:example.org", hosts));
+}
+
+TEST(Url, EmptyAllowlistDeniesAllHosts)
+{
+    EXPECT_FALSE(hfs::is_allowed_host("https://example.org/", {}));
+}
+
+TEST(Url, SubdomainsMustBeExplicitlyAllowed)
+{
+    constexpr std::array<std::string_view, 1> hosts{"sub.example.org"};
+    EXPECT_TRUE(hfs::is_allowed_host("https://sub.example.org/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://example.org/", hosts));
+    EXPECT_FALSE(hfs::is_allowed_host("https://other.sub.example.org/", hosts));
 }

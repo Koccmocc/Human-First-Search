@@ -2,6 +2,7 @@
 
 #include <lexbor/url/url.h>
 
+#include <algorithm>
 #include <exception>
 #include <stdexcept>
 #include <utility>
@@ -81,6 +82,40 @@ auto resolve_http_url(std::string_view base, std::string_view reference)
         throw std::runtime_error{"Could not serialize URL"};
     }
     return std::move(output.text);
+}
+
+auto http_url_host(std::string_view url) -> std::optional<std::string>
+{
+    Parser parser;
+    if (lxb_url_parser_init(&parser.value, nullptr) != LXB_STATUS_OK) {
+        throw std::runtime_error{"Could not initialize URL parser"};
+    }
+    auto* parsed = lxb_url_parse(&parser.value, nullptr,
+        reinterpret_cast<const lxb_char_t*>(url.empty() ? "" : url.data()), url.size());
+    if (!permitted(parsed)) {
+        return std::nullopt;
+    }
+
+    SerializedUrl output;
+    const auto status = lxb_url_serialize_host(lxb_url_host(parsed), append, &output);
+    if (output.error) {
+        std::rethrow_exception(output.error);
+    }
+    if (status != LXB_STATUS_OK) {
+        throw std::runtime_error{"Could not serialize URL host"};
+    }
+    return std::move(output.text);
+}
+
+auto is_allowed_host(std::string_view url,
+                     std::span<const std::string_view> allowed_hosts) -> bool
+{
+    if (allowed_hosts.empty()) {
+        return false;
+    }
+    const auto host = http_url_host(url);
+    // Compare parsed hosts, never raw URL prefixes or domain suffixes.
+    return host && std::ranges::find(allowed_hosts, *host) != allowed_hosts.end();
 }
 
 } // namespace hfs
