@@ -1,8 +1,8 @@
 add_library(crawler_core STATIC
-    src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp)
+    src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp src/robots.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
-target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static)
+target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
 
 # Keep the version in project() as the single source of truth.
 target_compile_definitions(crawler_core PRIVATE HFS_VERSION="${PROJECT_VERSION}")
@@ -18,6 +18,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(robots_test tests/robots_test.cpp)
+    target_link_libraries(robots_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(robots_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(robots_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(robots_parser_test tests/robots_parser_test.cpp)
     target_link_libraries(robots_parser_test PRIVATE hfs_robots_parser GTest::gtest_main)
     target_compile_options(robots_parser_test PRIVATE -Wall -Wextra -Wpedantic)

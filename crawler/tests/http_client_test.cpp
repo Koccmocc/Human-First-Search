@@ -1,5 +1,6 @@
 #include "hfs/http_client.hpp"
 #include "hfs/http_fetch.hpp"
+#include "hfs/crawler_identity.hpp"
 #include "hfs/url.hpp"
 
 #include <gtest/gtest.h>
@@ -27,6 +28,14 @@ TEST_F(HttpClient, ReturnsBodyStatusAndContentType)
     EXPECT_EQ(response->status, 200);
     EXPECT_EQ(response->body, "<p>Hello</p>");
     EXPECT_EQ(response->content_type, "text/html; charset=utf-8");
+}
+
+TEST_F(HttpClient, SendsCrawlerProductTokenInUserAgent)
+{
+    const auto result = hfs::http_get(base + "/agent");
+    const auto* response = std::get_if<hfs::HttpResponse>(&result);
+    ASSERT_NE(response, nullptr);
+    EXPECT_TRUE(response->body.starts_with(std::string{hfs::crawler_product} + "/"));
 }
 
 TEST_F(HttpClient, ReturnsHttpErrorsAndRedirectsWithoutFollowing)

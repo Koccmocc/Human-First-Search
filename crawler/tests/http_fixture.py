@@ -35,6 +35,8 @@ class Handler(BaseHTTPRequestHandler):
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
         body = b"x" * 128 if self.path == "/large" else b"<p>Hello</p>"
+        if self.path == "/agent":
+            body = self.headers.get("User-Agent", "").encode("utf-8")
         if self.path == "/empty":
             body = b""
         self.send_response(status)

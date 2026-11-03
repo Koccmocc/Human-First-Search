@@ -1,4 +1,5 @@
 #include "hfs/http_client.hpp"
+#include "hfs/crawler_identity.hpp"
 #include "hfs/url.hpp"
 
 #include <curl/curl.h>
@@ -83,7 +84,8 @@ auto http_get(std::string_view url, const HttpOptions& options) -> HttpResult
     set(CURLOPT_SSL_VERIFYPEER, 1L);
     set(CURLOPT_SSL_VERIFYHOST, 2L);
     set(CURLOPT_PROXY, "");
-    set(CURLOPT_USERAGENT, "HumanFirstSearch/" HFS_VERSION);
+    const auto user_agent = std::string{crawler_product} + "/" HFS_VERSION;
+    set(CURLOPT_USERAGENT, user_agent.c_str());
     set(CURLOPT_WRITEFUNCTION, &receive);
     set(CURLOPT_WRITEDATA, &buffer);
 

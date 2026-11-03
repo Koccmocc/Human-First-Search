@@ -248,7 +248,7 @@ being silently accepted. `http_get` itself still performs exactly one request;
 the optional redirect layer below performs controlled transitions.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs sixteen GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs seventeen GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
 timeout, a truncated response, invalid arguments and redirect metadata across
 301/302/303/307/308. They also cover missing Location and non-redirect statuses.
@@ -261,8 +261,9 @@ third-party Python packages; local socket access is required.
 `RequestPermission` callback accepting a canonical absolute URL and returning
 whether a request is allowed. It runs before every request, including the initial
 one; an empty callback denies all. For now the caller can use `is_allowed_host`.
-Robots checks and per-host scheduling have not yet been implemented and must be
-included in the request policy before live crawling. Policy exceptions propagate.
+Robots retrieval and per-host scheduling have not yet been implemented. The
+`robots_allows` matcher below can evaluate already obtained rules; combine these
+checks in the request policy before live crawling. Policy exceptions propagate.
 
 The default is at most five transitions (six requests). Zero allows only the
 initial request. Repeated canonical URLs, invalid targets and denied requests stop
@@ -303,7 +304,7 @@ of all Abseil functionality or full robots-protocol conformance.
 `robots_parser_test.cpp` covers empty rules, Disallow, more-specific Allow, agent
 selection, wildcard/end patterns, comments and query matching. The matcher expects
 normalized URLs; normalization remains our URL module's responsibility.
-This dependency is currently exercised only by the test, not by live requests.
+The dependency is now used privately by `crawler_core` through `robots_allows`.
 It does not fetch/cache robots files, decide HTTP-failure policy or implement
 per-host delays. A successfully retrieved empty file permits access under matching
 rules; a network error must not be represented as an empty file. Fetch/cache policy
@@ -312,3 +313,25 @@ and integration into `RequestPermission` are separate increments.
 ```powershell
 ctest --preset debug -R crawler.RobotsParser --output-on-failure
 ```
+
+### Matching robots rules through our interface
+
+`hfs::robots_allows(robots_txt, url)` evaluates known robots.txt text for the
+`HumanFirstSearch` product token. `crawler_identity.hpp` defines this token once
+for both matching and the HTTP User-Agent (`HumanFirstSearch/<version>`).
+The wrapper normalizes an absolute HTTP(S) URL with our URL module first, removing
+fragments and resolving dot segments. Invalid URLs and credentials are denied.
+Only standard C++ types appear in the public header; Google and Abseil stay private.
+
+Each call creates its own Google matcher and reparses the supplied text; no shared
+matcher state or parsed-rule cache is maintained. Allocation/normalization errors
+can throw. Empty rules permit valid URLs, so callers must supply text only for a
+known rules state and must never convert a network failure into an empty document.
+The wrapper does not fetch anything or associate text with an origin: callers
+must select the correct rules for the URL's scheme, host and port. It does not
+check our host allowlist, interpret HTTP statuses or implement Crawl-delay.
+
+`robots_test.cpp` covers the product group, URL normalization including percent
+encoding, invalid inputs, empty rules and independence between calls. The local
+HTTP fixture verifies that requests send the shared product token. Robots loading,
+cache/failure states and automatic policy integration remain future increments.
