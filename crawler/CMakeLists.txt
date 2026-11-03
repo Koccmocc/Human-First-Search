@@ -1,4 +1,5 @@
-add_library(crawler_core STATIC src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp)
+add_library(crawler_core STATIC
+    src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static)

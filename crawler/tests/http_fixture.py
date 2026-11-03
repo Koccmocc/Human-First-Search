@@ -26,6 +26,11 @@ class Handler(BaseHTTPRequestHandler):
             "/no-location": (302, None),
             "/ok-location": (200, "/must-not-follow"),
             "/not-modified": (304, "/must-not-follow"),
+            "/hop": (302, "/ok"),
+            "/chain": (301, "/hop"),
+            "/loop-a": (302, "/loop-b"),
+            "/loop-b": (307, "/loop-a#same-page"),
+            "/to-partial": (302, "/partial"),
         }
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))

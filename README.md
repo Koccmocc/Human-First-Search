@@ -243,16 +243,39 @@ when no header is present or the status is not one of these redirects. The value
 is not a validated absolute URL: resolve it against the requested URL with
 `resolve_http_url`, then check host scope and robots.txt before another request.
 Unsupported schemes and credentials remain visible for validation instead of
-being silently accepted. This step does not follow redirects or enforce a hop limit;
-controlled redirect handling remains a separate increment.
+being silently accepted. `http_get` itself still performs exactly one request;
+the optional redirect layer below performs controlled transitions.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs eleven GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs sixteen GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
 timeout, a truncated response, invalid arguments and redirect metadata across
 301/302/303/307/308. They also cover missing Location and non-redirect statuses.
 They require no internet or
 third-party Python packages; local socket access is required.
+
+### Controlled redirect fetching
+
+`fetch_http(url, permission, options, max_redirects)` wraps `http_get`. Supply a
+`RequestPermission` callback accepting a canonical absolute URL and returning
+whether a request is allowed. It runs before every request, including the initial
+one; an empty callback denies all. For now the caller can use `is_allowed_host`.
+Robots checks and per-host scheduling have not yet been implemented and must be
+included in the request policy before live crawling. Policy exceptions propagate.
+
+The default is at most five transitions (six requests). Zero allows only the
+initial request. Repeated canonical URLs, invalid targets and denied requests stop
+the chain before another request. URL normalization removes fragments, so a
+fragment-only cycle is detected too. HTTP responses without redirect metadata,
+including 4xx/5xx or a 302 without Location, terminate the chain normally.
+
+`FetchResult` contains a `FetchResponse` (final URL, response and ordered requested
+URLs), the original `HttpError`, or a `FetchError` describing policy denial, invalid
+URL, a redirect cycle or the hop limit. Failed chains do not expose a successful
+partial result. Timeout/body limits apply to each request independently, not to the
+whole chain. There are no retries or HTTPS-downgrade restrictions yet. The CLI is
+unchanged. Tests exercise an allowed chain, denied initial/redirect requests,
+cross-host denial, transition limits, cycles and transport-error propagation.
 
 ```powershell
 ctest --preset debug -R crawler.http_client --output-on-failure

@@ -1,9 +1,11 @@
 #include "hfs/http_client.hpp"
+#include "hfs/http_fetch.hpp"
 #include "hfs/url.hpp"
 
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <array>
 #include <utility>
 
 class HttpClient : public testing::Test {
@@ -137,4 +139,78 @@ TEST_F(HttpClient, DoesNotTreatEveryLocationAsARedirect)
         ASSERT_NE(response, nullptr);
         EXPECT_FALSE(response->redirect_location.has_value());
     }
+}
+
+TEST_F(HttpClient, FollowsBoundedChainWithPermissionBeforeEveryRequest)
+{
+    const auto host = hfs::http_url_host(base);
+    ASSERT_TRUE(host.has_value());
+    const std::array<std::string_view, 1> hosts{*host};
+    std::vector<std::string> checked;
+    const auto result = hfs::fetch_http(base + "/chain", [&](std::string_view url) {
+        checked.emplace_back(url);
+        return hfs::is_allowed_host(url, hosts);
+    }, {}, 2);
+    const auto* fetched = std::get_if<hfs::FetchResponse>(&result);
+    ASSERT_NE(fetched, nullptr);
+    EXPECT_EQ(fetched->final_url, base + "/ok");
+    EXPECT_EQ(fetched->response.status, 200);
+    EXPECT_EQ(checked, (std::vector<std::string>{base + "/chain", base + "/hop", base + "/ok"}));
+    EXPECT_EQ(fetched->requested_urls, checked);
+}
+
+TEST_F(HttpClient, DeniesInitialAndRedirectRequestsBeforeTransfer)
+{
+    const auto denied = hfs::fetch_http(base + "/must-not-follow", {});
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(denied));
+    EXPECT_EQ(std::get<hfs::FetchError>(denied).kind, hfs::FetchErrorKind::request_denied);
+    const auto host = hfs::http_url_host(base);
+    ASSERT_TRUE(host.has_value());
+    const std::array<std::string_view, 1> hosts{*host};
+    const auto outside = hfs::fetch_http(base + "/absolute", [&](std::string_view url) {
+        return hfs::is_allowed_host(url, hosts);
+    });
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(outside));
+    EXPECT_EQ(std::get<hfs::FetchError>(outside).kind, hfs::FetchErrorKind::request_denied);
+    const auto blocked_path = hfs::fetch_http(base + "/redirect", [&](std::string_view url) {
+        return url != base + "/must-not-follow";
+    });
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(blocked_path));
+    EXPECT_EQ(std::get<hfs::FetchError>(blocked_path).kind, hfs::FetchErrorKind::request_denied);
+}
+
+TEST_F(HttpClient, RedirectLimitCountsTransitions)
+{
+    const auto permit = [](std::string_view) { return true; };
+    EXPECT_TRUE(std::holds_alternative<hfs::FetchResponse>(hfs::fetch_http(base + "/ok", permit, {}, 0)));
+    for (const auto limit : {0U, 1U}) {
+        const auto result = hfs::fetch_http(base + "/chain", permit, {}, limit);
+        ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(result));
+        EXPECT_EQ(std::get<hfs::FetchError>(result).kind, hfs::FetchErrorKind::redirect_limit);
+    }
+}
+
+TEST_F(HttpClient, RejectsRedirectCyclesBeforeRepeatingRequests)
+{
+    std::vector<std::string> checked;
+    const auto result = hfs::fetch_http(base + "/loop-a", [&](std::string_view url) {
+        checked.emplace_back(url);
+        return true;
+    });
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(result));
+    EXPECT_EQ(std::get<hfs::FetchError>(result).kind, hfs::FetchErrorKind::redirect_loop);
+    EXPECT_EQ(checked, (std::vector<std::string>{base + "/loop-a", base + "/loop-b"}));
+}
+
+TEST_F(HttpClient, RejectsUnsupportedRedirectsAndPreservesTransportErrors)
+{
+    const auto permit = [](std::string_view) { return true; };
+    for (const auto* path : {"/other-scheme", "/credentials"}) {
+        const auto result = hfs::fetch_http(base + path, permit);
+        ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(result));
+        EXPECT_EQ(std::get<hfs::FetchError>(result).kind, hfs::FetchErrorKind::invalid_url);
+    }
+    const auto partial = hfs::fetch_http(base + "/to-partial", permit);
+    ASSERT_TRUE(std::holds_alternative<hfs::HttpError>(partial));
+    EXPECT_EQ(std::get<hfs::HttpError>(partial).kind, hfs::HttpErrorKind::transport);
 }
