@@ -1,7 +1,7 @@
-add_library(crawler_core STATIC src/cli.cpp src/html_document.cpp src/url.cpp)
+add_library(crawler_core STATIC src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
-target_link_libraries(crawler_core PRIVATE lexbor_static)
+target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static)
 
 # Keep the version in project() as the single source of truth.
 target_compile_definitions(crawler_core PRIVATE HFS_VERSION="${PROJECT_VERSION}")
@@ -17,6 +17,15 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_executable(http_client_test tests/http_client_test.cpp)
+    target_link_libraries(http_client_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(http_client_test PRIVATE -Wall -Wextra -Wpedantic)
+    # The Python wrapper owns the local server and forwards the test exit code.
+    add_test(NAME crawler.http_client COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/http_fixture.py" "$<TARGET_FILE:http_client_test>")
+    set_tests_properties(crawler.http_client PROPERTIES TIMEOUT 20)
+
     add_executable(curl_test tests/curl_test.cpp)
     target_link_libraries(curl_test PRIVATE CURL::libcurl_static GTest::gtest_main)
     target_compile_options(curl_test PRIVATE -Wall -Wextra -Wpedantic)

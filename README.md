@@ -1,8 +1,9 @@
 # Human-first Search
 
-Local university proof of concept. The current increment is the C++ crawler's
-build and CLI scaffold. Crawling, HTML extraction and JSONL export are not
-implemented yet. Development is currently independent of the team's Python/API/UI.
+Local university proof of concept. The C++ library currently provides HTML/URL
+utilities and a bounded single-request HTTP client. The CLI only supports help
+and version; automated crawling, main-article extraction and JSONL export are
+not implemented yet. Development is independent of the team's Python/API/UI.
 
 ## Build and run
 
@@ -32,6 +33,7 @@ Lexbor HTML parser. It is built from C with `gcc`; the crawler uses `g++`.
 See [the parser decision](docs/html-parser.md) for the version, license and offline override.
 With `BUILD_TESTING=ON` (the preset default), configuration also downloads the
 pinned GoogleTest 1.18.0 source. It is not needed by the application itself.
+Python 3 is required for tests: its standard library hosts the loopback HTTP fixture.
 Configuration also downloads the pinned libcurl source described below.
 
 ## Structure and decisions
@@ -192,13 +194,13 @@ redirect target. No requests or queue integration are implemented in this step.
 The command-line curl tool, upstream tests and manuals are disabled. Generic
 CMake options are scoped inside a function so curl does not disable our tests.
 Optional compression, HTTP/2 and third-party SSH/PSL/IDN dependencies are disabled
-for the initial build. Additional protocols may remain compiled in: the future
-HTTP client must explicitly restrict transfers and redirects to HTTP(S).
+for the initial build. Additional protocols may remain compiled in; the HTTP
+client explicitly restricts transfers to HTTP(S) and disables automatic redirects.
 
 On Windows TLS uses Schannel and the system certificate store. On other platforms
 the configuration selects OpenSSL, requiring matching development headers and
-libraries; that path has not been tested here. Certificate verification must
-remain enabled when the client is implemented.
+libraries; that path has not been tested here. The client explicitly enables
+certificate and hostname verification; a live TLS connection has not yet been tested.
 
 The dependency uses the [curl license](https://github.com/curl/curl/blob/3163ec065643ba20709f190111f42c3e1fe95273/COPYING).
 Preserve its copyright and permission notice when distributing copies.
@@ -208,6 +210,40 @@ FetchContent network retrieval has not yet been exercised.
 
 `crawler/tests/curl_test.cpp` checks global initialization, handle creation,
 HTTP/HTTPS capabilities and the Windows TLS backend without network requests.
-libcurl is currently linked only to this compatibility test. Downloading pages,
-timeouts, response limits, TLS connections and controlled redirects are future
-HTTP-client work; the CLI's behavior is unchanged.
+libcurl is also a private dependency of `crawler_core` for the HTTP client below.
+
+### Single-request HTTP client
+
+`http_get(url, options)` performs one synchronous GET. Defaults are a 3-second
+connection timeout, 10-second total timeout and a 2 MiB body limit. Options must
+be positive. URLs pass through the HTTP(S) resolver, which rejects credentials
+and removes fragments. Redirects and retries are disabled. Proxy environment
+variables are intentionally ignored for this initial direct-connection transport.
+The User-Agent is `HumanFirstSearch/<project version>`.
+
+`HttpResult` holds either `HttpResponse` (status, body bytes, Content-Type) or
+`HttpError` (invalid request, timeout, body limit or transport failure). HTTP
+4xx/5xx are responses, not transport failures. Interrupted/oversized transfers
+return an error without exposing a partial body as a complete response. The body
+limit is checked before appending, including when Content-Length is absent.
+It does not bound all libcurl allocations or response headers. Body bytes are
+not decompressed or converted to UTF-8 here; HTML/type/encoding policy is future work.
+
+libcurl global initialization is shared inside the module; each call owns and
+releases its easy handle. Configuration/initialization errors and C++ allocation
+failures can throw; callback exceptions are captured and rethrown after libcurl
+returns, never unwound through C frames.
+
+This is a transport primitive: the caller must enforce host scope, robots.txt
+and per-host delays before requesting a URL. It is not yet exposed through the CLI.
+Redirect metadata and controlled redirect handling remain a separate increment.
+
+`crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
+runs seven GoogleTest scenarios and shuts down the server. Tests cover normal and
+empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
+timeout, a truncated response and invalid arguments. They require no internet or
+third-party Python packages; local socket access is required.
+
+```powershell
+ctest --preset debug -R crawler.http_client --output-on-failure
+```
