@@ -107,3 +107,44 @@ TEST(Url, SubdomainsMustBeExplicitlyAllowed)
     EXPECT_FALSE(hfs::is_allowed_host("https://example.org/", hosts));
     EXPECT_FALSE(hfs::is_allowed_host("https://other.sub.example.org/", hosts));
 }
+
+TEST(Url, RobotsFileLivesAtRootRegardlessOfPagePathAndQuery)
+{
+    for (const auto* page : {"https://example.org/dir/article?x=1#part",
+                             "https://example.org/", "https://example.org/ROBOTS.TXT?x=1"}) {
+        SCOPED_TRACE(page);
+        EXPECT_EQ(hfs::robots_txt_url(page), "https://example.org/robots.txt");
+    }
+}
+
+TEST(Url, RobotsLocationKeepsSchemeAndNonDefaultPortDistinct)
+{
+    EXPECT_EQ(hfs::robots_txt_url("https://example.org:8443/article"),
+              "https://example.org:8443/robots.txt");
+    EXPECT_EQ(hfs::robots_txt_url("http://example.org:8080/article"),
+              "http://example.org:8080/robots.txt");
+    EXPECT_NE(hfs::robots_txt_url("http://example.org/"), hfs::robots_txt_url("https://example.org/"));
+    EXPECT_NE(hfs::robots_txt_url("https://example.org/"),
+              hfs::robots_txt_url("https://example.org:8443/"));
+    // Equivalent spellings must share one cache entry.
+    EXPECT_EQ(hfs::robots_txt_url("HTTPS://EXAMPLE.ORG:443/a"),
+              hfs::robots_txt_url("https://example.org/b"));
+    EXPECT_EQ(hfs::robots_txt_url("http://example.org:80/a"),
+              hfs::robots_txt_url("http://example.org/b"));
+}
+
+TEST(Url, RobotsLocationHandlesIpv6AndInternationalHostNames)
+{
+    EXPECT_EQ(hfs::robots_txt_url("http://[::1]:8080/article"), "http://[::1]:8080/robots.txt");
+    EXPECT_EQ(hfs::robots_txt_url("https://caf%C3%A9.example/article"),
+              "https://xn--caf-dma.example/robots.txt");
+}
+
+TEST(Url, RobotsLocationRejectsInvalidInputsInsteadOfGuessingAnOrigin)
+{
+    for (const auto* page : {"", "/relative", "example.org/path", "file:///page",
+                             "https://[bad", "https://user:pass@example.org/"}) {
+        SCOPED_TRACE(page);
+        EXPECT_FALSE(hfs::robots_txt_url(page));
+    }
+}

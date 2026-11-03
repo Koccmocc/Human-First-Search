@@ -107,6 +107,12 @@ auto http_url_host(std::string_view url) -> std::optional<std::string>
     return std::move(output.text);
 }
 
+auto robots_txt_url(std::string_view page_url) -> std::optional<std::string>
+{
+    // A root-relative reference preserves the origin and replaces path/query/fragment.
+    return resolve_http_url(page_url, "/robots.txt");
+}
+
 auto is_allowed_host(std::string_view url,
                      std::span<const std::string_view> allowed_hosts) -> bool
 {

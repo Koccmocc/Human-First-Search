@@ -335,3 +335,20 @@ check our host allowlist, interpret HTTP statuses or implement Crawl-delay.
 encoding, invalid inputs, empty rules and independence between calls. The local
 HTTP fixture verifies that requests send the shared product token. Robots loading,
 cache/failure states and automatic policy integration remain future increments.
+
+### Locating robots.txt
+
+`robots_txt_url(page_url)` returns the canonical HTTP(S) address of `/robots.txt`
+at the page's scheme, host and port, following the location rule in
+[RFC 9309 section 2.3](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.3).
+It uses the existing URL resolver to replace the page path, query and fragment.
+For example, `https://example.org:8443/dir/page?x=1` produces
+`https://example.org:8443/robots.txt`.
+
+The result can identify a future cache entry: HTTP and HTTPS and non-default
+ports stay separate, while equivalent default-port spellings share one key.
+This differs from the host-only allowlist, which intentionally ignores ports.
+Invalid/relative URLs, unsupported schemes and credentials return `std::nullopt`.
+The helper performs no request and does not decide access. Tests cover origin
+separation, canonical spellings, IPv6/IDN and invalid inputs. Downloading and
+caching rules remain the next increment.
