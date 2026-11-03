@@ -35,6 +35,7 @@ With `BUILD_TESTING=ON` (the preset default), configuration also downloads the
 pinned GoogleTest 1.18.0 source. It is not needed by the application itself.
 Python 3 is required for tests: its standard library hosts the loopback HTTP fixture.
 Configuration also downloads the pinned libcurl source described below.
+The robots.txt parser and its Abseil dependency are also fetched at pinned revisions.
 
 ## Structure and decisions
 
@@ -277,6 +278,37 @@ whole chain. There are no retries or HTTPS-downgrade restrictions yet. The CLI i
 unchanged. Tests exercise an allowed chain, denied initial/redirect requests,
 cross-host denial, transition limits, cycles and transport-error propagation.
 
+### Robots.txt parser dependency
+
+`cmake/RobotsParser.cmake` builds Google's robots.txt parser/matcher at commit
+`22b355ff855419e6a3ff8ff09c0ad7fdb17116f9` with Abseil 20250814.2 at commit
+`0cf0a5c9d12cc3783363ab20f11613e69fd04c9a`. Both use Apache-2.0:
+[parser license](https://github.com/google/robotstxt/blob/22b355ff855419e6a3ff8ff09c0ad7fdb17116f9/LICENSE),
+[Abseil license](https://github.com/abseil/abseil-cpp/blob/0cf0a5c9d12cc3783363ab20f11613e69fd04c9a/LICENSE).
+Preserve license/copyright notices in distributed copies and document modifications
+if upstream files are changed. Our integration builds unmodified source.
+
+Upstream parser CMake bootstraps dependencies through ExternalProject, so we skip
+that build script via FetchContent's SOURCE_SUBDIR and define a small static target
+using `robots.cc`, `absl::base`, `absl::strings` and `absl::fixed_array`. This keeps
+dependency revisions explicit and avoids upstream executables/install rules.
+
+Verified locally with MinGW GCC 15.2.0 using exact checkouts through
+`FETCHCONTENT_SOURCE_DIR_ROBOTSTXT` and `FETCHCONTENT_SOURCE_DIR_ABSEIL` overrides.
+Automatic FetchContent downloads have not been exercised. Abseil emits MinGW
+warnings for MSVC pragmas, a type-range comparison and a `%zu` diagnostic in its
+Base64 error path. They remain visible; our smoke tests do not establish correctness
+of all Abseil functionality or full robots-protocol conformance.
+
+`robots_parser_test.cpp` covers empty rules, Disallow, more-specific Allow, agent
+selection, wildcard/end patterns, comments and query matching. The matcher expects
+normalized URLs; normalization remains our URL module's responsibility.
+This dependency is currently exercised only by the test, not by live requests.
+It does not fetch/cache robots files, decide HTTP-failure policy or implement
+per-host delays. A successfully retrieved empty file permits access under matching
+rules; a network error must not be represented as an empty file. Fetch/cache policy
+and integration into `RequestPermission` are separate increments.
+
 ```powershell
-ctest --preset debug -R crawler.http_client --output-on-failure
+ctest --preset debug -R crawler.RobotsParser --output-on-failure
 ```

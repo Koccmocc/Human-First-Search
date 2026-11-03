@@ -18,6 +18,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(robots_parser_test tests/robots_parser_test.cpp)
+    target_link_libraries(robots_parser_test PRIVATE hfs_robots_parser GTest::gtest_main)
+    target_compile_options(robots_parser_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(robots_parser_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_executable(http_client_test tests/http_client_test.cpp)
     target_link_libraries(http_client_test PRIVATE crawler_core GTest::gtest_main)
