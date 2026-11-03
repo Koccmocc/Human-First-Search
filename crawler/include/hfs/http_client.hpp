@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -17,6 +18,8 @@ struct HttpResponse {
     long status{};
     std::string body;
     std::string content_type;
+    // Raw Location from 301/302/303/307/308, not a validated or resolved URL.
+    std::optional<std::string> redirect_location;
 };
 
 enum class HttpErrorKind { invalid_request, timeout, body_limit, transport };

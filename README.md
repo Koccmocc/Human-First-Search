@@ -221,7 +221,8 @@ and removes fragments. Redirects and retries are disabled. Proxy environment
 variables are intentionally ignored for this initial direct-connection transport.
 The User-Agent is `HumanFirstSearch/<project version>`.
 
-`HttpResult` holds either `HttpResponse` (status, body bytes, Content-Type) or
+`HttpResult` holds either `HttpResponse` (status, body bytes, Content-Type and
+optional redirect Location) or
 `HttpError` (invalid request, timeout, body limit or transport failure). HTTP
 4xx/5xx are responses, not transport failures. Interrupted/oversized transfers
 return an error without exposing a partial body as a complete response. The body
@@ -236,12 +237,21 @@ returns, never unwound through C frames.
 
 This is a transport primitive: the caller must enforce host scope, robots.txt
 and per-host delays before requesting a URL. It is not yet exposed through the CLI.
-Redirect metadata and controlled redirect handling remain a separate increment.
+`HttpResponse::redirect_location` copies the first Location header from
+301/302/303/307/308 responses, using libcurl's response-header API. It is absent
+when no header is present or the status is not one of these redirects. The value
+is not a validated absolute URL: resolve it against the requested URL with
+`resolve_http_url`, then check host scope and robots.txt before another request.
+Unsupported schemes and credentials remain visible for validation instead of
+being silently accepted. This step does not follow redirects or enforce a hop limit;
+controlled redirect handling remains a separate increment.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs seven GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs eleven GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
-timeout, a truncated response and invalid arguments. They require no internet or
+timeout, a truncated response, invalid arguments and redirect metadata across
+301/302/303/307/308. They also cover missing Location and non-redirect statuses.
+They require no internet or
 third-party Python packages; local socket access is required.
 
 ```powershell

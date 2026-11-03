@@ -17,15 +17,26 @@ class Handler(BaseHTTPRequestHandler):
             self.server.followed = True
         if self.path == "/slow":
             time.sleep(0.5)
-        status = {"/redirect": 302, "/missing": 404, "/empty": 204}.get(self.path, 200)
+        redirects = {
+            "/redirect": (302, "/must-not-follow"),
+            "/relative": (301, "../must-not-follow?x=1#part"),
+            "/absolute": (303, "https://example.invalid/not-fetched"),
+            "/other-scheme": (307, "file:///unused"),
+            "/credentials": (308, "https://user:pass@example.invalid/"),
+            "/no-location": (302, None),
+            "/ok-location": (200, "/must-not-follow"),
+            "/not-modified": (304, "/must-not-follow"),
+        }
+        default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
+        status, location = redirects.get(self.path, (default_status, None))
         body = b"x" * 128 if self.path == "/large" else b"<p>Hello</p>"
         if self.path == "/empty":
             body = b""
         self.send_response(status)
         if self.path != "/empty":
             self.send_header("Content-Type", "text/html; charset=utf-8")
-        if self.path == "/redirect":
-            self.send_header("Location", "/must-not-follow")
+        if location is not None:
+            self.send_header("Location", location)
         # /large intentionally has no Content-Length to exercise the write limit.
         if self.path != "/large":
             self.send_header("Content-Length", str(100 if self.path == "/partial" else len(body)))

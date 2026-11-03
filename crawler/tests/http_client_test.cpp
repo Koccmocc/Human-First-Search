@@ -1,4 +1,5 @@
 #include "hfs/http_client.hpp"
+#include "hfs/url.hpp"
 
 #include <gtest/gtest.h>
 
@@ -34,6 +35,9 @@ TEST_F(HttpClient, ReturnsHttpErrorsAndRedirectsWithoutFollowing)
         const auto* response = std::get_if<hfs::HttpResponse>(&result);
         ASSERT_NE(response, nullptr);
         EXPECT_EQ(response->status, status);
+        if (status == 302) {
+            EXPECT_EQ(response->redirect_location, "/must-not-follow");
+        }
     }
 }
 
@@ -90,4 +94,47 @@ TEST_F(HttpClient, RejectsInvalidRequestsBeforeTransfer)
     const auto invalid_options = hfs::http_get(base + "/ok", options);
     ASSERT_TRUE(std::holds_alternative<hfs::HttpError>(invalid_options));
     EXPECT_EQ(std::get<hfs::HttpError>(invalid_options).kind, hfs::HttpErrorKind::invalid_request);
+}
+
+TEST_F(HttpClient, ReturnsRelativeLocationForCallerResolution)
+{
+    const auto result = hfs::http_get(base + "/relative");
+    const auto* response = std::get_if<hfs::HttpResponse>(&result);
+    ASSERT_NE(response, nullptr);
+    ASSERT_TRUE(response->redirect_location.has_value());
+    EXPECT_EQ(*response->redirect_location, "../must-not-follow?x=1#part");
+    EXPECT_EQ(hfs::resolve_http_url(base + "/relative", *response->redirect_location),
+              base + "/must-not-follow?x=1");
+}
+
+TEST_F(HttpClient, ReturnsAbsoluteLocationWithoutFetchingIt)
+{
+    const auto result = hfs::http_get(base + "/absolute");
+    const auto* response = std::get_if<hfs::HttpResponse>(&result);
+    ASSERT_NE(response, nullptr);
+    EXPECT_EQ(response->status, 303);
+    EXPECT_EQ(response->redirect_location, "https://example.invalid/not-fetched");
+}
+
+TEST_F(HttpClient, PreservesRejectedTargetsForCallerValidation)
+{
+    for (const auto* path : {"/other-scheme", "/credentials"}) {
+        SCOPED_TRACE(path);
+        const auto result = hfs::http_get(base + path);
+        const auto* response = std::get_if<hfs::HttpResponse>(&result);
+        ASSERT_NE(response, nullptr);
+        ASSERT_TRUE(response->redirect_location.has_value());
+        EXPECT_FALSE(hfs::resolve_http_url(base + path, *response->redirect_location));
+    }
+}
+
+TEST_F(HttpClient, DoesNotTreatEveryLocationAsARedirect)
+{
+    for (const auto* path : {"/ok", "/no-location", "/ok-location", "/not-modified"}) {
+        SCOPED_TRACE(path);
+        const auto result = hfs::http_get(base + path);
+        const auto* response = std::get_if<hfs::HttpResponse>(&result);
+        ASSERT_NE(response, nullptr);
+        EXPECT_FALSE(response->redirect_location.has_value());
+    }
 }

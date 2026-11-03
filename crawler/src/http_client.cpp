@@ -2,6 +2,7 @@
 #include "hfs/url.hpp"
 
 #include <curl/curl.h>
+#include <curl/header.h>
 
 #include <exception>
 #include <memory>
@@ -105,7 +106,19 @@ auto http_get(std::string_view url, const HttpOptions& options) -> HttpResult
         curl_easy_getinfo(handle.get(), CURLINFO_CONTENT_TYPE, &content_type) != CURLE_OK) {
         throw std::runtime_error{"Could not read HTTP response metadata"};
     }
-    return HttpResponse{status, std::move(buffer.text), content_type != nullptr ? content_type : ""};
+    HttpResponse response{status, std::move(buffer.text),
+                          content_type != nullptr ? content_type : "", std::nullopt};
+    if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+        curl_header* header{};
+        const auto result = curl_easy_header(handle.get(), "Location", 0, CURLH_HEADER, -1, &header);
+        if (result == CURLHE_OK) {
+            // Copy before handle cleanup; callers must resolve and validate this value.
+            response.redirect_location = header->value;
+        } else if (result != CURLHE_MISSING && result != CURLHE_NOHEADERS) {
+            throw std::runtime_error{"Could not read redirect Location"};
+        }
+    }
+    return response;
 }
 
 } // namespace hfs
