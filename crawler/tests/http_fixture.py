@@ -13,6 +13,11 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if self.path.startswith("/robots-case/"):
+            self.server.robots_case = self.path.removeprefix("/robots-case/")
+            self.send_response(204)
+            self.end_headers()
+            return
         if self.path == "/must-not-follow":
             self.server.followed = True
         if self.path == "/slow":
@@ -35,13 +40,35 @@ class Handler(BaseHTTPRequestHandler):
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
         body = b"x" * 128 if self.path == "/large" else b"<p>Hello</p>"
+        if self.path in ("/robots.txt", "/robots-rules"):
+            scenario = self.server.robots_case
+            body = b"User-agent: HumanFirstSearch\nDisallow: /private\n"
+            status = {"empty": 200, "no-content": 204, "missing": 404, "gone": 410,
+                      "forbidden": 403, "rate-limit": 429, "server-error": 503,
+                      "not-modified": 304}.get(scenario, 200)
+            if scenario in ("empty", "no-content"):
+                body = b""
+            if self.path == "/robots.txt":
+                if scenario == "redirect":
+                    status, location = 302, "/robots-rules"
+                elif scenario == "cross-origin":
+                    status, location = 302, f"http://localhost:{self.server.server_port}/robots-rules"
+                elif scenario == "loop":
+                    status, location = 302, "/robots.txt"
+                elif scenario == "bad-redirect":
+                    status, location = 302, "file:///unused"
+            if scenario == "slow":
+                time.sleep(0.5)
+            if scenario == "large":
+                body = b"x" * (500 * 1024 + 1)
         if self.path == "/agent":
             body = self.headers.get("User-Agent", "").encode("utf-8")
         if self.path == "/empty":
             body = b""
         self.send_response(status)
         if self.path != "/empty":
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            media_type = "text/plain" if self.path in ("/robots.txt", "/robots-rules") else "text/html"
+            self.send_header("Content-Type", media_type + "; charset=utf-8")
         if location is not None:
             self.send_header("Location", location)
         # /large intentionally has no Content-Length to exercise the write limit.
@@ -56,6 +83,7 @@ class Handler(BaseHTTPRequestHandler):
 
 with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
     server.followed = False
+    server.robots_case = "rules"
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

@@ -1,5 +1,6 @@
 add_library(crawler_core STATIC
-    src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp src/robots.cpp)
+    src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp
+    src/robots.cpp src/robots_loading.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
@@ -29,7 +30,7 @@ if(BUILD_TESTING)
     gtest_discover_tests(robots_parser_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    add_executable(http_client_test tests/http_client_test.cpp)
+    add_executable(http_client_test tests/http_client_test.cpp tests/robots_loading_test.cpp)
     target_link_libraries(http_client_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(http_client_test PRIVATE -Wall -Wextra -Wpedantic)
     # The Python wrapper owns the local server and forwards the test exit code.

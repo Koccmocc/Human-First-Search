@@ -248,7 +248,7 @@ being silently accepted. `http_get` itself still performs exactly one request;
 the optional redirect layer below performs controlled transitions.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs seventeen GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs twenty-three GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
 timeout, a truncated response, invalid arguments and redirect metadata across
 301/302/303/307/308. They also cover missing Location and non-redirect statuses.
@@ -261,9 +261,9 @@ third-party Python packages; local socket access is required.
 `RequestPermission` callback accepting a canonical absolute URL and returning
 whether a request is allowed. It runs before every request, including the initial
 one; an empty callback denies all. For now the caller can use `is_allowed_host`.
-Robots retrieval and per-host scheduling have not yet been implemented. The
-`robots_allows` matcher below can evaluate already obtained rules; combine these
-checks in the request policy before live crawling. Policy exceptions propagate.
+`load_robots` retrieves origin-specific rules and `robots_allows` evaluates their
+text. Combine host scope and loaded rules in the request policy. Per-host scheduling
+is a subsequent increment. Policy exceptions propagate.
 
 The default is at most five transitions (six requests). Zero allows only the
 initial request. Repeated canonical URLs, invalid targets and denied requests stop
@@ -305,10 +305,9 @@ of all Abseil functionality or full robots-protocol conformance.
 selection, wildcard/end patterns, comments and query matching. The matcher expects
 normalized URLs; normalization remains our URL module's responsibility.
 The dependency is now used privately by `crawler_core` through `robots_allows`.
-It does not fetch/cache robots files, decide HTTP-failure policy or implement
-per-host delays. A successfully retrieved empty file permits access under matching
-rules; a network error must not be represented as an empty file. Fetch/cache policy
-and integration into `RequestPermission` are separate increments.
+Robots retrieval and HTTP-result handling live in `load_robots`. Successfully
+retrieved empty rules permit access under matching rules. Download failures produce
+an explicit blocking state. Caching and per-host delays are subsequent increments.
 
 ```powershell
 ctest --preset debug -R crawler.RobotsParser --output-on-failure
@@ -333,8 +332,8 @@ check our host allowlist, interpret HTTP statuses or implement Crawl-delay.
 
 `robots_test.cpp` covers the product group, URL normalization including percent
 encoding, invalid inputs, empty rules and independence between calls. The local
-HTTP fixture verifies that requests send the shared product token. Robots loading,
-cache/failure states and automatic policy integration remain future increments.
+HTTP fixture verifies that requests send the shared product token. `load_robots`
+provides origin binding and download-result states for later cache integration.
 
 ### Locating robots.txt
 
@@ -350,5 +349,40 @@ ports stay separate, while equivalent default-port spellings share one key.
 This differs from the host-only allowlist, which intentionally ignores ports.
 Invalid/relative URLs, unsupported schemes and credentials return `std::nullopt`.
 The helper performs no request and does not decide access. Tests cover origin
-separation, canonical spellings, IPv6/IDN and invalid inputs. Downloading and
-caching rules remain the next increment.
+separation, canonical spellings, IPv6/IDN and invalid inputs. The loader below uses
+this address to retrieve rules for each origin.
+
+### Loading robots rules
+
+`load_robots(page_url, bootstrap_permission, options)` obtains the origin's
+robots.txt through `fetch_http`, with up to five controlled redirects. The
+permission callback checks the configured network scope before each robots request.
+Use a bootstrap permission callback independent of the rules being retrieved.
+
+`RobotsDocument` holds the initial robots URL, rules text, terminal HTTP status
+and a failure explanation. `allows(page_url)` first checks the page's scheme,
+host and port against that initial source, including after a cross-origin redirect.
+Its state determines the access decision.
+
+| State | Retrieval result | Access decision |
+| --- | --- | --- |
+| `rules` | HTTP 200 or 204 | Evaluate the obtained text |
+| `unavailable` | HTTP 404 or 410 | Permit the initial origin |
+| `unreachable` | Other statuses, denied requests or transfer/redirect errors | Deny |
+
+The project chooses 404/410 as the statuses that permit access without rules.
+403, 429, 5xx and unexpected statuses block access. This uses the discretion for
+unavailable files and the server/network-failure rule described in
+[RFC 9309 access results](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.3.1).
+Future changes to this policy should update the loader tests together.
+
+The body limit must be at least 500 KiB, following the protocol's minimum parsing
+capacity. The default remains 2 MiB. Timeouts and body limits apply per request.
+Transport/setup exceptions propagate as described for `fetch_http`.
+Content-Type and encoding validation are future steps. A cache will retain these
+origin-specific states in a subsequent increment.
+
+Six scenarios in `robots_loading_test.cpp` use the loopback server to cover rules,
+empty/missing files, HTTP failures, download limits/timeouts, origin binding and
+redirect failures. The HTTP CTest entry executes both client and robots-loading
+scenarios.
