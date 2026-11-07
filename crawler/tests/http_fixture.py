@@ -20,6 +20,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/must-not-follow":
             self.server.followed = True
+        if self.path.startswith("/private"):
+            self.server.blocked_page_requested = True
         if self.path == "/slow":
             time.sleep(0.5)
         redirects = {
@@ -36,6 +38,9 @@ class Handler(BaseHTTPRequestHandler):
             "/loop-a": (302, "/loop-b"),
             "/loop-b": (307, "/loop-a#same-page"),
             "/to-partial": (302, "/partial"),
+            "/to-private": (302, "/private/page"),
+            "/page-cross-origin": (302, f"http://localhost:{self.server.server_port}/private/page"),
+            "/page-cross-public": (302, f"http://localhost:{self.server.server_port}/public"),
         }
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
@@ -84,6 +89,7 @@ class Handler(BaseHTTPRequestHandler):
 with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
     server.followed = False
     server.robots_case = "rules"
+    server.blocked_page_requested = False
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -91,6 +97,8 @@ with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
         result = subprocess.run(sys.argv[1:], env=env, timeout=15)
         if server.followed:
             raise RuntimeError("Client followed a redirect despite the single-request policy")
+        if server.blocked_page_requested:
+            raise RuntimeError("Client requested a page forbidden by robots.txt")
         exit_code = result.returncode
     finally:
         server.shutdown()

@@ -1,5 +1,6 @@
 #include "hfs/robots_loading.hpp"
 #include "hfs/robots_cache.hpp"
+#include "hfs/page_fetcher.hpp"
 #include "hfs/url.hpp"
 
 #include <gtest/gtest.h>
@@ -196,4 +197,63 @@ TEST_F(RobotsLoading, CacheRetainsMissingFileStateUntilNormalExpiry)
     now += 8s;
     EXPECT_FALSE(cache.get(base).allows(base + "/private"));
     EXPECT_EQ(requests, 2);
+}
+
+TEST_F(RobotsLoading, PageFetcherUsesCachedRulesAndBlocksPrivatePages)
+{
+    set_case("rules");
+    hfs::PageFetcher fetcher{{"127.0.0.1"}};
+    EXPECT_TRUE(std::holds_alternative<hfs::FetchResponse>(fetcher.fetch(base + "/public")));
+    const auto blocked = fetcher.fetch(base + "/private/page");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(blocked));
+    EXPECT_EQ(std::get<hfs::FetchError>(blocked).kind, hfs::FetchErrorKind::request_denied);
+    set_case("empty");
+    // Changing the server's rules has no effect until this session's cache expires.
+    const auto cached = fetcher.fetch(base + "/private/page");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(cached));
+    EXPECT_EQ(std::get<hfs::FetchError>(cached).kind, hfs::FetchErrorKind::request_denied);
+}
+
+TEST_F(RobotsLoading, PageFetcherChecksRobotsBeforeRedirectDestinations)
+{
+    set_case("rules");
+    hfs::PageFetcher fetcher{{"127.0.0.1", "localhost"}};
+    for (const auto* path : {"/to-private", "/page-cross-origin"}) {
+        SCOPED_TRACE(path);
+        const auto result = fetcher.fetch(base + path);
+        ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(result));
+        EXPECT_EQ(std::get<hfs::FetchError>(result).kind, hfs::FetchErrorKind::request_denied);
+    }
+    const auto allowed = fetcher.fetch(base + "/chain");
+    const auto* fetched = std::get_if<hfs::FetchResponse>(&allowed);
+    ASSERT_NE(fetched, nullptr);
+    EXPECT_EQ(fetched->final_url, base + "/ok");
+    const auto cross_origin = fetcher.fetch(base + "/page-cross-public");
+    const auto* destination = std::get_if<hfs::FetchResponse>(&cross_origin);
+    ASSERT_NE(destination, nullptr);
+    EXPECT_EQ(destination->final_url, "http://localhost" + base.substr(base.rfind(':')) + "/public");
+}
+
+TEST_F(RobotsLoading, PageFetcherBlocksFailedRobotsAndAcceptsMissingRules)
+{
+    set_case("server-error");
+    hfs::PageFetcher failed{{"127.0.0.1"}};
+    const auto denied = failed.fetch(base + "/must-not-follow");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(denied));
+    EXPECT_EQ(std::get<hfs::FetchError>(denied).kind, hfs::FetchErrorKind::request_denied);
+    set_case("missing");
+    hfs::PageFetcher missing{{"127.0.0.1"}};
+    EXPECT_TRUE(std::holds_alternative<hfs::FetchResponse>(missing.fetch(base + "/public")));
+}
+
+TEST_F(RobotsLoading, PageFetcherRejectsOutOfScopeUrlsBeforeLoadingRules)
+{
+    hfs::PageFetcher empty{{}};
+    const auto denied = empty.fetch(base + "/must-not-follow");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(denied));
+    EXPECT_EQ(std::get<hfs::FetchError>(denied).kind, hfs::FetchErrorKind::request_denied);
+    hfs::PageFetcher scoped{{"127.0.0.1"}};
+    const auto outside = scoped.fetch("http://example.invalid/page");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(outside));
+    EXPECT_EQ(std::get<hfs::FetchError>(outside).kind, hfs::FetchErrorKind::request_denied);
 }

@@ -248,7 +248,7 @@ being silently accepted. `http_get` itself still performs exactly one request;
 the optional redirect layer below performs controlled transitions.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs twenty-seven GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs thirty-one GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
 timeout, a truncated response, invalid arguments and redirect metadata across
 301/302/303/307/308. They also cover missing Location and non-redirect statuses.
@@ -261,9 +261,9 @@ third-party Python packages; local socket access is required.
 `RequestPermission` callback accepting a canonical absolute URL and returning
 whether a request is allowed. It runs before every request, including the initial
 one; an empty callback denies all. For now the caller can use `is_allowed_host`.
-`load_robots` retrieves origin-specific rules and `robots_allows` evaluates their
-text. Combine host scope and loaded rules in the request policy. Per-host scheduling
-is a subsequent increment. Policy exceptions propagate.
+`PageFetcher` combines host scope and cached robots decisions in the page request
+policy. `load_robots` retrieves origin-specific rules and `robots_allows` evaluates
+their text. Per-host scheduling is a subsequent increment. Policy exceptions propagate.
 
 The default is at most five transitions (six requests). Zero allows only the
 initial request. Repeated canonical URLs, invalid targets and denied requests stop
@@ -413,3 +413,28 @@ to force reloads, including after changes to state captured by the bootstrap pol
 Fixed lifetimes currently govern expiry. HTTP cache validators, Cache-Control and
 Retry-After handling can be added separately. Tests cover reuse across page paths,
 origin isolation, missing-file caching, error recovery, failed refreshes and clear.
+
+### Fetching pages under crawl policy
+
+`PageFetcher` owns canonical allowed host names and a `RobotsCache` for a
+single-threaded session. Construct it with host names produced by `http_url_host`.
+Each page request checks host scope first, then the cached robots decision.
+`fetch_http` applies that policy to the initial page and each redirect destination.
+The cache uses the same host scope when retrieving robots files and following
+their redirects. Host names are owned by the policy closure.
+
+```cpp
+hfs::PageFetcher pages{{"example.org", "docs.example.org"}};
+auto result = pages.fetch("https://example.org/article");
+```
+
+`fetch` returns the existing `FetchResult`. Policy failures return
+`FetchErrorKind::request_denied`, including a blocking robots state. Empty host lists
+deny page requests before robots retrieval. Page HTTP options and the redirect
+limit are supplied per call. `RobotsCacheOptions` in the constructor controls robots
+downloads and cache lifetimes. Create a new session to replace its host scope.
+
+Four local integration scenarios verify page blocking, cached decisions, missing
+and failed robots retrieval, host rejection and redirects across origins. The
+fixture records any request to its forbidden `/private` pages and fails the run
+if one occurs. Per-host delays and the URL frontier are the next crawl components.
