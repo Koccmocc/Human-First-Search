@@ -9,6 +9,11 @@
 #include <array>
 #include <stdexcept>
 
+namespace {
+// Existing policy scenarios run immediately; timing has dedicated scenarios below.
+const hfs::HostDelayOptions immediate_requests{std::chrono::milliseconds{0}};
+}
+
 class RobotsLoading : public testing::Test {
 protected:
     std::string base;
@@ -202,7 +207,7 @@ TEST_F(RobotsLoading, CacheRetainsMissingFileStateUntilNormalExpiry)
 TEST_F(RobotsLoading, PageFetcherUsesCachedRulesAndBlocksPrivatePages)
 {
     set_case("rules");
-    hfs::PageFetcher fetcher{{"127.0.0.1"}};
+    hfs::PageFetcher fetcher{{"127.0.0.1"}, {}, immediate_requests};
     EXPECT_TRUE(std::holds_alternative<hfs::FetchResponse>(fetcher.fetch(base + "/public")));
     const auto blocked = fetcher.fetch(base + "/private/page");
     ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(blocked));
@@ -217,7 +222,7 @@ TEST_F(RobotsLoading, PageFetcherUsesCachedRulesAndBlocksPrivatePages)
 TEST_F(RobotsLoading, PageFetcherChecksRobotsBeforeRedirectDestinations)
 {
     set_case("rules");
-    hfs::PageFetcher fetcher{{"127.0.0.1", "localhost"}};
+    hfs::PageFetcher fetcher{{"127.0.0.1", "localhost"}, {}, immediate_requests};
     for (const auto* path : {"/to-private", "/page-cross-origin"}) {
         SCOPED_TRACE(path);
         const auto result = fetcher.fetch(base + path);
@@ -237,23 +242,46 @@ TEST_F(RobotsLoading, PageFetcherChecksRobotsBeforeRedirectDestinations)
 TEST_F(RobotsLoading, PageFetcherBlocksFailedRobotsAndAcceptsMissingRules)
 {
     set_case("server-error");
-    hfs::PageFetcher failed{{"127.0.0.1"}};
+    hfs::PageFetcher failed{{"127.0.0.1"}, {}, immediate_requests};
     const auto denied = failed.fetch(base + "/must-not-follow");
     ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(denied));
     EXPECT_EQ(std::get<hfs::FetchError>(denied).kind, hfs::FetchErrorKind::request_denied);
     set_case("missing");
-    hfs::PageFetcher missing{{"127.0.0.1"}};
+    hfs::PageFetcher missing{{"127.0.0.1"}, {}, immediate_requests};
     EXPECT_TRUE(std::holds_alternative<hfs::FetchResponse>(missing.fetch(base + "/public")));
 }
 
 TEST_F(RobotsLoading, PageFetcherRejectsOutOfScopeUrlsBeforeLoadingRules)
 {
-    hfs::PageFetcher empty{{}};
+    hfs::PageFetcher empty{{}, {}, immediate_requests};
     const auto denied = empty.fetch(base + "/must-not-follow");
     ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(denied));
     EXPECT_EQ(std::get<hfs::FetchError>(denied).kind, hfs::FetchErrorKind::request_denied);
-    hfs::PageFetcher scoped{{"127.0.0.1"}};
+    hfs::PageFetcher scoped{{"127.0.0.1"}, {}, immediate_requests};
     const auto outside = scoped.fetch("http://example.invalid/page");
     ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(outside));
     EXPECT_EQ(std::get<hfs::FetchError>(outside).kind, hfs::FetchErrorKind::request_denied);
+}
+
+TEST_F(RobotsLoading, PageFetcherSharesDelayBetweenRobotsAndPageRedirects)
+{
+    using namespace std::chrono_literals;
+    set_case("redirect");
+    hfs::HostDelayOptions::Clock::time_point now{};
+    std::vector<std::chrono::milliseconds> waits;
+    hfs::HostDelayOptions timing{1s, [&] { return now; }, [&](auto duration) {
+        waits.push_back(duration);
+        now += duration;
+    }};
+    hfs::PageFetcher fetcher{{"127.0.0.1"}, {}, timing};
+    const auto result = fetcher.fetch(base + "/chain");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchResponse>(result));
+    // Two robots requests and three page requests share four intervals.
+    EXPECT_EQ(waits, (std::vector<std::chrono::milliseconds>{1s, 1s, 1s, 1s}));
+    EXPECT_EQ(now.time_since_epoch(), 4s);
+    const auto denied = fetcher.fetch(base + "/private/page");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(denied));
+    const auto outside = fetcher.fetch("https://example.invalid/page");
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(outside));
+    EXPECT_EQ(waits.size(), 4U);
 }

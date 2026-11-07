@@ -248,7 +248,7 @@ being silently accepted. `http_get` itself still performs exactly one request;
 the optional redirect layer below performs controlled transitions.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs thirty-one GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs thirty-two GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
 timeout, a truncated response, invalid arguments and redirect metadata across
 301/302/303/307/308. They also cover missing Location and non-redirect statuses.
@@ -263,7 +263,7 @@ whether a request is allowed. It runs before every request, including the initia
 one; an empty callback denies all. For now the caller can use `is_allowed_host`.
 `PageFetcher` combines host scope and cached robots decisions in the page request
 policy. `load_robots` retrieves origin-specific rules and `robots_allows` evaluates
-their text. Per-host scheduling is a subsequent increment. Policy exceptions propagate.
+their text. A shared host timer spaces permitted request attempts. Policy exceptions propagate.
 
 The default is at most five transitions (six requests). Zero allows only the
 initial request. Repeated canonical URLs, invalid targets and denied requests stop
@@ -308,7 +308,7 @@ The dependency is now used privately by `crawler_core` through `robots_allows`.
 Robots retrieval and HTTP-result handling live in `load_robots`. Successfully
 retrieved empty rules permit access under matching rules. Download failures produce
 an explicit blocking state. `RobotsCache` retains these states between page checks.
-Per-host delays are a subsequent increment.
+`PageFetcher` shares per-host timing between robots retrieval and page requests.
 
 ```powershell
 ctest --preset debug -R crawler.RobotsParser --output-on-failure
@@ -437,4 +437,32 @@ downloads and cache lifetimes. Create a new session to replace its host scope.
 Four local integration scenarios verify page blocking, cached decisions, missing
 and failed robots retrieval, host rejection and redirects across origins. The
 fixture records any request to its forbidden `/private` pages and fails the run
-if one occurs. Per-host delays and the URL frontier are the next crawl components.
+if one occurs. The bounded URL frontier is the next crawl component.
+
+### Host request timing
+
+`HostDelay` tracks the last request attempt for each canonical host using
+`steady_clock`. The first attempt is immediate. Later attempts wait for the
+remaining part of `HostDelayOptions::interval`, which defaults to one second.
+Time spent in a previous request counts toward the interval. HTTP/HTTPS and
+different ports share timing for the same host name. Other host names have their
+own timelines.
+
+`PageFetcher` accepts `HostDelayOptions` as its third constructor argument. Its
+robots bootstrap callback and page policy share a timer, covering redirects in
+both request chains. Waiting occurs after access checks succeed. A denied page
+with already cached rules consumes no new timing slot. Copies of the fetcher
+share this timer through shared ownership, keeping stored callbacks valid after
+copying or moving the session.
+
+The interval is configured through `HostDelayOptions`. Zero permits immediate
+requests for local tests. Negative intervals and empty clock/sleep callbacks
+throw `std::invalid_argument`. Custom callbacks must supply monotonic time and
+sleep for at least the requested duration. Built-in sleeping uses
+`std::this_thread::sleep_for`; host waiting precedes the individual HTTP timeout.
+This scheduler supports the existing single-threaded crawl model.
+
+Five unit scenarios use an injected clock to verify first/next attempts, remaining
+time, host grouping and invalid configuration. A local integration scenario checks
+that two robots requests and three page requests share four intervals. Policy
+tests configure zero delay, while this timing scenario advances a simulated clock.

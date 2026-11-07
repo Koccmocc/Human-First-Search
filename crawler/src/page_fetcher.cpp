@@ -5,13 +5,22 @@
 
 namespace hfs {
 
-PageFetcher::PageFetcher(std::vector<std::string> allowed_hosts, RobotsCacheOptions robots_options)
-    : in_scope_{[hosts = std::move(allowed_hosts)](std::string_view url) {
+PageFetcher::PageFetcher(std::vector<std::string> allowed_hosts, RobotsCacheOptions robots_options,
+                         HostDelayOptions timing)
+    : delay_{std::make_shared<HostDelay>(std::move(timing))},
+      in_scope_{[hosts = std::move(allowed_hosts)](std::string_view url) {
           // The closure owns the names; views exist only during this synchronous check.
           const std::vector<std::string_view> names{hosts.begin(), hosts.end()};
           return is_allowed_host(url, names);
       }},
-      robots_{in_scope_, robots_options}
+      robots_{[scope = in_scope_, delay = delay_](std::string_view url) {
+          if (!scope(url)) {
+              return false;
+          }
+          // Robots and page requests share timing, including after a copy or move.
+          delay->wait(url);
+          return true;
+      }, robots_options}
 {
 }
 
@@ -23,7 +32,11 @@ auto PageFetcher::fetch(std::string_view url, const HttpOptions& options,
         if (!in_scope_(target)) {
             return false;
         }
-        return robots_.get(target).allows(target);
+        if (!robots_.get(target).allows(target)) {
+            return false;
+        }
+        delay_->wait(target);
+        return true;
     }, options, max_redirects);
 }
 
