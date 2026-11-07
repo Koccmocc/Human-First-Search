@@ -437,7 +437,7 @@ downloads and cache lifetimes. Create a new session to replace its host scope.
 Four local integration scenarios verify page blocking, cached decisions, missing
 and failed robots retrieval, host rejection and redirects across origins. The
 fixture records any request to its forbidden `/private` pages and fails the run
-if one occurs. The bounded URL frontier is the next crawl component.
+if one occurs. `UrlFrontier` supplies the bounded pending work described below.
 
 ### Host request timing
 
@@ -466,3 +466,30 @@ Five unit scenarios use an injected clock to verify first/next attempts, remaini
 time, host grouping and invalid configuration. A local integration scenario checks
 that two robots requests and three page requests share four intervals. Policy
 tests configure zero delay, while this timing scenario advances a simulated clock.
+
+### Bounded URL frontier
+
+`UrlFrontier` owns canonical allowed host names, a FIFO of `CrawlTarget` values
+and the set of URLs accepted during the session. `add_seed(url)` assigns depth
+zero. `add_link(parent, reference)` resolves the reference against the parent URL
+and assigns the next depth. Both paths use our URL normalization and host checks.
+`pop()` returns an owning target or `std::nullopt` when the queue is empty.
+
+`FrontierLimits` defaults to 1000 pending entries, 5000 accepted unique URLs and
+depth 3. Zero maximum depth admits seeds only. Pending and total limits must be
+positive. The total budget counts admitted candidates throughout the session,
+including popped entries and eventual fetch failures. Corpus page targets are
+tracked separately by the crawl loop.
+
+`EnqueueResult` reports admission, a duplicate, an invalid URL, rejected host,
+depth limit, full queue or exhausted total budget. Accepted URLs remain known
+after popping, so links back to processed pages are rejected. Query strings and
+path case keep their URL-module semantics. Capacity rejections leave candidates
+eligible for later admission. Queue admission rolls back if dedup storage allocation
+fails. `size()` counts pending work and `accepted_count()` counts unique admissions.
+
+The frontier supports a single-threaded session. `PageFetcher` supplies robots,
+HTTP and timing policy when processing a popped entry. The next increment joins
+frontier processing, page fetching and HTML link discovery into the crawl loop.
+Seven unit scenarios cover FIFO/depth, session deduplication, both capacity limits,
+depth boundaries/overflow and rejected candidates.
