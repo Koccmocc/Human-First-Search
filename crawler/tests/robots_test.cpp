@@ -1,6 +1,8 @@
 #include "hfs/robots.hpp"
+#include "hfs/robots_cache.hpp"
 
 #include <gtest/gtest.h>
+#include <stdexcept>
 
 TEST(Robots, AllowsKnownEmptyRulesForValidUrls)
 {
@@ -41,4 +43,21 @@ TEST(Robots, IndependentCallsDoNotShareMatcherState)
     EXPECT_FALSE(hfs::robots_allows("User-agent: *\nDisallow: /\n", url));
     EXPECT_TRUE(hfs::robots_allows("", url));
     EXPECT_FALSE(hfs::robots_allows("User-agent: *\nDisallow: /\n", url));
+}
+
+TEST(RobotsCache, RejectsInvalidLifetimesAndMissingClock)
+{
+    using namespace std::chrono_literals;
+    hfs::RobotsCacheOptions options;
+    options.ttl = 25h;
+    EXPECT_THROW(hfs::RobotsCache({}, options), std::invalid_argument);
+    options.ttl = 0s;
+    EXPECT_THROW(hfs::RobotsCache({}, options), std::invalid_argument);
+    options.ttl = 10s;
+    options.retry_after = 0s;
+    EXPECT_THROW(hfs::RobotsCache({}, options), std::invalid_argument);
+    options.retry_after = 11s;
+    EXPECT_THROW(hfs::RobotsCache({}, options), std::invalid_argument);
+    options.retry_after = 1s;
+    EXPECT_THROW(hfs::RobotsCache({}, options, {}), std::invalid_argument);
 }

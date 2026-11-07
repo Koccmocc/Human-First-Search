@@ -248,7 +248,7 @@ being silently accepted. `http_get` itself still performs exactly one request;
 the optional redirect layer below performs controlled transitions.
 
 `crawler/tests/http_fixture.py` starts a loopback server on an OS-selected port,
-runs twenty-three GoogleTest scenarios and shuts down the server. Tests cover normal and
+runs twenty-seven GoogleTest scenarios and shuts down the server. Tests cover normal and
 empty responses, 404/302, an unfollowed redirect, unknown-length body limits, a
 timeout, a truncated response, invalid arguments and redirect metadata across
 301/302/303/307/308. They also cover missing Location and non-redirect statuses.
@@ -307,7 +307,8 @@ normalized URLs; normalization remains our URL module's responsibility.
 The dependency is now used privately by `crawler_core` through `robots_allows`.
 Robots retrieval and HTTP-result handling live in `load_robots`. Successfully
 retrieved empty rules permit access under matching rules. Download failures produce
-an explicit blocking state. Caching and per-host delays are subsequent increments.
+an explicit blocking state. `RobotsCache` retains these states between page checks.
+Per-host delays are a subsequent increment.
 
 ```powershell
 ctest --preset debug -R crawler.RobotsParser --output-on-failure
@@ -333,7 +334,7 @@ check our host allowlist, interpret HTTP statuses or implement Crawl-delay.
 `robots_test.cpp` covers the product group, URL normalization including percent
 encoding, invalid inputs, empty rules and independence between calls. The local
 HTTP fixture verifies that requests send the shared product token. `load_robots`
-provides origin binding and download-result states for later cache integration.
+provides origin binding and download-result states used by `RobotsCache`.
 
 ### Locating robots.txt
 
@@ -344,7 +345,7 @@ It uses the existing URL resolver to replace the page path, query and fragment.
 For example, `https://example.org:8443/dir/page?x=1` produces
 `https://example.org:8443/robots.txt`.
 
-The result can identify a future cache entry: HTTP and HTTPS and non-default
+The result identifies a cache entry: HTTP and HTTPS and non-default
 ports stay separate, while equivalent default-port spellings share one key.
 This differs from the host-only allowlist, which intentionally ignores ports.
 Invalid/relative URLs, unsupported schemes and credentials return `std::nullopt`.
@@ -379,10 +380,36 @@ Future changes to this policy should update the loader tests together.
 The body limit must be at least 500 KiB, following the protocol's minimum parsing
 capacity. The default remains 2 MiB. Timeouts and body limits apply per request.
 Transport/setup exceptions propagate as described for `fetch_http`.
-Content-Type and encoding validation are future steps. A cache will retain these
-origin-specific states in a subsequent increment.
+Content-Type and encoding validation are future steps. `RobotsCache` retains these
+origin-specific states as described below.
 
 Six scenarios in `robots_loading_test.cpp` use the loopback server to cover rules,
 empty/missing files, HTTP failures, download limits/timeouts, origin binding and
 redirect failures. The HTTP CTest entry executes both client and robots-loading
 scenarios.
+
+### In-memory robots cache
+
+`RobotsCache` owns the bootstrap request policy, HTTP options and origin-keyed
+documents. `get(page_url)` returns a copy of fresh rules or calls `load_robots`
+when the entry is missing or expired. Call `get` for each page permission decision
+and combine `document.allows(page_url)` with the current host allowlist.
+
+Defaults are 24 hours for `rules`/`unavailable` and one minute for `unreachable`.
+`RobotsCacheOptions` accepts positive lifetimes with
+`retry_after <= ttl <= 24 hours`. The TTL cap follows the caching guidance in
+[RFC 9309 section 2.4](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.4).
+An expired entry refreshes at the next lookup. A failed refresh replaces the old
+rules with the blocking result until the retry interval expires.
+
+Freshness uses `steady_clock` starting when loading completes. Tests inject a
+clock to check expiry boundaries without sleeping. Invalid page URLs produce a
+blocking document and leave the cache intact. Returned values own their text,
+so changing a returned document leaves cached rules intact. Loading exceptions
+propagate before replacing an expired entry, allowing another attempt on the next lookup.
+
+The cache supports a single-threaded crawl and lives for one process. Call `clear()`
+to force reloads, including after changes to state captured by the bootstrap policy.
+Fixed lifetimes currently govern expiry. HTTP cache validators, Cache-Control and
+Retry-After handling can be added separately. Tests cover reuse across page paths,
+origin isolation, missing-file caching, error recovery, failed refreshes and clear.

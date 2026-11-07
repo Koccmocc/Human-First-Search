@@ -1,4 +1,5 @@
 #include "hfs/robots_loading.hpp"
+#include "hfs/robots_cache.hpp"
 #include "hfs/url.hpp"
 
 #include <gtest/gtest.h>
@@ -17,14 +18,19 @@ protected:
         base = address;
     }
 
-    auto load_case(std::string_view scenario, const hfs::HttpOptions& options = {})
-        -> hfs::RobotsDocument
+    void set_case(std::string_view scenario)
     {
         const auto setup = hfs::http_get(base + "/robots-case/" + std::string{scenario});
         const auto* response = std::get_if<hfs::HttpResponse>(&setup);
         if (response == nullptr || response->status != 204) {
             throw std::runtime_error{"Could not configure robots fixture"};
         }
+    }
+
+    auto load_case(std::string_view scenario, const hfs::HttpOptions& options = {})
+        -> hfs::RobotsDocument
+    {
+        set_case(scenario);
         return hfs::load_robots(base + "/nested/page?x=1", [](std::string_view url) {
             constexpr std::array<std::string_view, 2> hosts{"127.0.0.1", "localhost"};
             return hfs::is_allowed_host(url, hosts);
@@ -108,4 +114,86 @@ TEST_F(RobotsLoading, InvalidRequestsAndMissingPermissionBlockAccess)
     options.max_body_bytes = 1;
     const auto too_small = hfs::load_robots(base + "/page", {}, options);
     EXPECT_FALSE(too_small.allows(base + "/page"));
+}
+
+TEST_F(RobotsLoading, CacheReusesOriginRulesAndRefreshesAtExpiry)
+{
+    using namespace std::chrono_literals;
+    hfs::RobotsCache::Clock::time_point now{};
+    int requests{};
+    hfs::RobotsCacheOptions options;
+    options.ttl = 10s;
+    options.retry_after = 2s;
+    hfs::RobotsCache cache{[&](std::string_view) { ++requests; return true; }, options, [&] { return now; }};
+    set_case("rules");
+    auto first = cache.get(base + "/public");
+    EXPECT_TRUE(first.allows(base + "/public"));
+    first.text.clear();
+    set_case("empty");
+    now += 9s;
+    EXPECT_FALSE(cache.get(base + "/another?x=1").allows(base + "/private"));
+    EXPECT_EQ(requests, 1);
+    now += 1s;
+    EXPECT_TRUE(cache.get(base + "/private").allows(base + "/private"));
+    EXPECT_EQ(requests, 2);
+}
+
+TEST_F(RobotsLoading, CacheRetriesErrorsSoonerAndBlocksAfterFailedRefresh)
+{
+    using namespace std::chrono_literals;
+    hfs::RobotsCache::Clock::time_point now{};
+    int requests{};
+    hfs::RobotsCacheOptions options;
+    options.ttl = 10s;
+    options.retry_after = 2s;
+    hfs::RobotsCache cache{[&](std::string_view) { ++requests; return true; }, options, [&] { return now; }};
+    set_case("rules");
+    EXPECT_TRUE(cache.get(base).allows(base + "/public"));
+    set_case("server-error");
+    now += 10s;
+    EXPECT_EQ(cache.get(base).state, hfs::RobotsState::unreachable);
+    set_case("empty");
+    now += 1s;
+    EXPECT_FALSE(cache.get(base).allows(base + "/public"));
+    EXPECT_EQ(requests, 2);
+    now += 1s;
+    EXPECT_TRUE(cache.get(base).allows(base + "/public"));
+    EXPECT_EQ(requests, 3);
+}
+
+TEST_F(RobotsLoading, CacheSeparatesOriginsAndClearForcesReload)
+{
+    int requests{};
+    hfs::RobotsCache cache{[&](std::string_view) { ++requests; return true; }};
+    set_case("rules");
+    EXPECT_EQ(cache.get(base).state, hfs::RobotsState::rules);
+    const auto alias = "http://localhost" + base.substr(base.rfind(':'));
+    EXPECT_EQ(cache.get(alias).state, hfs::RobotsState::rules);
+    EXPECT_EQ(requests, 2);
+    EXPECT_FALSE(cache.get("file:///unused").allows(base));
+    EXPECT_EQ(requests, 2);
+    set_case("empty");
+    cache.clear();
+    EXPECT_TRUE(cache.get(base).allows(base + "/private"));
+    EXPECT_EQ(requests, 3);
+}
+
+TEST_F(RobotsLoading, CacheRetainsMissingFileStateUntilNormalExpiry)
+{
+    using namespace std::chrono_literals;
+    hfs::RobotsCache::Clock::time_point now{};
+    int requests{};
+    hfs::RobotsCacheOptions options;
+    options.ttl = 10s;
+    options.retry_after = 2s;
+    hfs::RobotsCache cache{[&](std::string_view) { ++requests; return true; }, options, [&] { return now; }};
+    set_case("missing");
+    EXPECT_EQ(cache.get(base).state, hfs::RobotsState::unavailable);
+    set_case("rules");
+    now += 2s;
+    EXPECT_TRUE(cache.get(base).allows(base + "/private"));
+    EXPECT_EQ(requests, 1);
+    now += 8s;
+    EXPECT_FALSE(cache.get(base).allows(base + "/private"));
+    EXPECT_EQ(requests, 2);
 }
