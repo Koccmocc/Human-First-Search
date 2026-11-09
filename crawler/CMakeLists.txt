@@ -1,7 +1,7 @@
 add_library(crawler_core STATIC
     src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp
     src/robots.cpp src/robots_loading.cpp src/robots_cache.cpp src/page_fetcher.cpp
-    src/host_delay.cpp src/url_frontier.cpp)
+    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
@@ -41,6 +41,13 @@ if(BUILD_TESTING)
     gtest_discover_tests(robots_parser_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_executable(crawl_test tests/crawl_test.cpp)
+    target_link_libraries(crawl_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(crawl_test PRIVATE -Wall -Wextra -Wpedantic)
+    add_test(NAME crawler.crawl COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/http_fixture.py" "$<TARGET_FILE:crawl_test>")
+    set_tests_properties(crawler.crawl PROPERTIES TIMEOUT 20)
+
     add_executable(http_client_test tests/http_client_test.cpp tests/robots_loading_test.cpp)
     target_link_libraries(http_client_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(http_client_test PRIVATE -Wall -Wextra -Wpedantic)

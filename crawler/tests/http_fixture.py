@@ -41,10 +41,29 @@ class Handler(BaseHTTPRequestHandler):
             "/to-private": (302, "/private/page"),
             "/page-cross-origin": (302, f"http://localhost:{self.server.server_port}/private/page"),
             "/page-cross-public": (302, f"http://localhost:{self.server.server_port}/public"),
+            "/crawl/alias": (302, "/crawl/nested/page"),
+            "/crawl/alias-two": (301, "/crawl/nested/page"),
         }
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
         body = b"x" * 128 if self.path == "/large" else b"<p>Hello</p>"
+        crawl_pages = {
+            "/crawl/start": b'<title>Start</title><p>Start body</p>'
+                            b'<a href="a#first">A</a><a href="a#again">Duplicate</a>'
+                            b'<a href="b">B</a><a href="/private/page">Private</a>'
+                            b'<a href="http://example.invalid/outside">Outside</a>',
+            "/crawl/a": b'<title>A</title><p>Alpha &amp; beta</p>'
+                        b'<a href="start">Back</a><a href="deep">Deep</a>',
+            "/crawl/b": b'<title>B</title><p>Beta</p>',
+            "/crawl/deep": b'<title>Deep</title><p>Deep body</p>',
+            "/crawl/nested/page": b'<title>Redirected</title><a href="child">Child</a>',
+            "/crawl/nested/child": b'<title>Child</title><p>Child body</p>',
+        }
+        body = crawl_pages.get(self.path, body)
+        if self.path in ("/crawl/error", "/crawl/plain", "/crawl/untyped", "/crawl/htmlish"):
+            body = b'<a href="/must-not-follow">Do not discover</a>'
+        if self.path == "/crawl/error":
+            status = 404
         if self.path in ("/robots.txt", "/robots-rules"):
             scenario = self.server.robots_case
             body = b"User-agent: HumanFirstSearch\nDisallow: /private\n"
@@ -71,8 +90,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/empty":
             body = b""
         self.send_response(status)
-        if self.path != "/empty":
+        if self.path not in ("/empty", "/crawl/untyped"):
             media_type = "text/plain" if self.path in ("/robots.txt", "/robots-rules") else "text/html"
+            media_type = {"/crawl/plain": "text/plain", "/crawl/htmlish": "text/htmlish",
+                          "/crawl/nested/page": "Text/HTML"}.get(self.path, media_type)
             self.send_header("Content-Type", media_type + "; charset=utf-8")
         if location is not None:
             self.send_header("Location", location)

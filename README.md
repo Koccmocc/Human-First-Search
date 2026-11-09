@@ -489,7 +489,63 @@ eligible for later admission. Queue admission rolls back if dedup storage alloca
 fails. `size()` counts pending work and `accepted_count()` counts unique admissions.
 
 The frontier supports a single-threaded session. `PageFetcher` supplies robots,
-HTTP and timing policy when processing a popped entry. The next increment joins
-frontier processing, page fetching and HTML link discovery into the crawl loop.
+HTTP and timing policy when processing a popped entry. The crawl loop joins these
+components with HTML link discovery as described below.
 Seven unit scenarios cover FIFO/depth, session deduplication, both capacity limits,
 depth boundaries/overflow and rejected candidates.
+
+### Bounded crawl loop
+
+`crawl(seeds, allowed_hosts, consume, options)` runs one synchronous session using
+`UrlFrontier`, `PageFetcher` and `HtmlDocument`. All seeds are admitted before
+processing begins. The frontier resolves and filters discovered links; fetching
+enforces host scope, robots rules, request delays and redirect limits.
+
+```cpp
+#include "hfs/crawl.hpp"
+#include <iostream>
+
+const std::vector<std::string> seeds{"https://example.org/"};
+const auto summary = hfs::crawl(seeds, {"example.org"}, [](const hfs::CrawledPage& page) {
+    std::cout << page.url << '\n' << page.title << '\n';
+});
+```
+
+The required consumer receives one owning `CrawledPage` by const reference. It may
+write immediately or copy the value for later use; its reference expires after
+the callback. The loop retains the current document and URL bookkeeping rather
+than accumulating every page body. Records include the final URL, title, body
+text, discovery depth, HTTP status, Content-Type and requested redirect chain.
+
+Only status 200 with media type `text/html` enters extraction and discovery.
+Media type matching is case-insensitive and permits parameters. Missing types,
+other media and other statuses are counted as skipped responses. Policy, transport
+and redirect failures increment `fetch_failures` and processing continues without
+automatic retries. Setup, allocation, parser and consumer exceptions propagate.
+
+`CrawlOptions` groups existing frontier, HTTP, robots and timing settings. Its
+positive `max_pages` (default 1000) bounds delivered HTML records; positive
+`max_targets` (default 5000) bounds popped queue entries, including failures and
+duplicates. This target budget does not count individual robots or redirect HTTP
+requests. Each chain retains its existing request limits. `max_redirects` defaults
+to five. `CrawlSummary` reports counts, rejected seeds (including duplicates),
+remaining queue size and a stop reason: empty queue, page limit or target limit.
+An empty queue takes precedence when no work remains at a limit boundary.
+
+Relative links use the final response URL and retain the source's discovery depth
+before adding one for a link. A session emits each final URL once. Already emitted
+queued URLs are skipped before fetching; different redirect aliases can still
+cause a repeated download before their shared destination is known. This is URL
+deduplication; identical text at different final URLs is a later corpus concern.
+Rejected discovery candidates retain the frontier's existing admission semantics.
+
+The current extractor assumes UTF-8 HTML and returns structural body text. Charset
+validation/conversion, HTML `base`, main-article selection, language detection,
+text hashes, JSONL output, detailed crawl logs and a global duration limit remain
+separate increments. The CLI still exposes help/version; this loop is a library
+entry point until crawl configuration and command-line execution are added.
+
+Eight GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+They cover link discovery and cycles, robots/scope enforcement, redirect bases and
+duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
+failure recovery, seed rejection and consumer errors. No internet is needed.
