@@ -1,8 +1,12 @@
 """Exercise the real CLI under http_fixture.py's loopback server."""
 
 import os
+import hashlib
+import json
+from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 
 CRAWLER = sys.argv[1]
@@ -51,6 +55,58 @@ class CliCrawl(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertEqual(summary["pages"], "0")
         self.assertEqual(summary["fetch_failures"], "1")
+
+    def test_jsonl_round_trip_preserves_unicode_controls_hashes_and_redirect_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "corpus with spaces.jsonl"
+            result = self.run_crawl("--seed", BASE + "/crawl/export-alias", "--output", str(path))
+            self.summary(result)
+            raw = path.read_bytes()
+            self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+            self.assertEqual(raw.count(b"\n"), 1)
+            self.assertNotIn(b"\r", raw)
+            self.assertTrue(raw.endswith(b"\n"))
+            record = json.loads(raw.decode("utf-8"))
+            expected_text = 'First "line" \\ path\nSecond caf\u00e9 \x01'
+            self.assertEqual(record["url"], BASE + "/crawl/export")
+            self.assertEqual(record["title"], 'Export "title" \\ caf\u00e9')
+            self.assertEqual(record["text"], expected_text)
+            self.assertEqual(record["schema_version"], 1)
+            self.assertEqual(record["extractor_version"], "body-text-v1")
+            self.assertEqual(record["url_normalization_version"], "lexbor-url-v1")
+            self.assertEqual(record["requested_urls"], [BASE + "/crawl/export-alias", record["url"]])
+            self.assertEqual(record["page_id"], "sha256:" + hashlib.sha256(record["url"].encode()).hexdigest())
+            self.assertEqual(record["text_hash"], "sha256:" + hashlib.sha256(expected_text.encode()).hexdigest())
+            self.assertEqual(record["http_status"], 200)
+            self.assertEqual(record["depth"], 0)
+            self.assertIsNone(record["language"])
+            self.assertIsNone(record["fetched_at"])
+            second = Path(directory) / "second.jsonl"
+            self.summary(self.run_crawl("--seed", BASE + "/crawl/export-alias", "--output", str(second)))
+            self.assertEqual(second.read_bytes(), raw)
+
+    def test_jsonl_contains_one_record_per_page_and_empty_export_has_no_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pages.jsonl"
+            result = self.run_crawl("--seed", BASE + "/crawl/start", "--max-depth", "1", "--output", str(path))
+            self.summary(result)
+            records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([record["url"] for record in records], result.stdout.splitlines())
+            self.assertEqual(len(records), 3)
+            empty = Path(directory) / "empty.jsonl"
+            self.summary(self.run_crawl("--seed", BASE + "/private/page", "--output", str(empty)))
+            self.assertEqual(empty.read_bytes(), b"")
+
+    def test_existing_or_unavailable_output_fails_before_http_and_preserves_existing_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            existing = Path(directory) / "existing.jsonl"
+            existing.write_bytes(b"keep this data\n")
+            for path in (existing, Path(directory) / "missing" / "corpus.jsonl"):
+                result = self.run_crawl("--seed", BASE + "/must-not-follow", "--output", str(path))
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("JSONL", result.stderr)
+            self.assertEqual(existing.read_bytes(), b"keep this data\n")
 
 
 if __name__ == "__main__":

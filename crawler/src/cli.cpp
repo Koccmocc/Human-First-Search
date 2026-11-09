@@ -51,7 +51,8 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
         const auto option = arguments[index];
         const auto limit = std::find_if(limits.begin(), limits.end(),
                                          [option](const auto& item) { return item.name == option; });
-        if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" && limit == limits.end()) {
+        if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" &&
+            option != "--output" && limit == limits.end()) {
             return hfs::CliError{"Unknown argument: " + std::string{option}};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--")) {
@@ -72,6 +73,11 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
             if (std::find(command.allowed_hosts.begin(), command.allowed_hosts.end(), *host) == command.allowed_hosts.end()) {
                 command.allowed_hosts.push_back(std::move(*host));
             }
+        } else if (option == "--output") {
+            if (command.output_path || value.empty() || value.find('\0') != std::string_view::npos) {
+                return hfs::CliError{"--output requires one nonempty file path and cannot be repeated"};
+            }
+            command.output_path = value;
         } else {
             if (!supplied.insert(option).second) {
                 return hfs::CliError{"Duplicate option: " + std::string{option}};
@@ -154,11 +160,12 @@ auto help_text() noexcept -> std::string_view
            "  --max-pending N     Pending queue capacity (default 1000).\n"
            "  --max-urls N        Total admitted URL limit (default 5000).\n"
            "  --delay-ms N        Per-host request interval (default 1000; zero for local tests).\n"
+           "  --output PATH       Write a new JSONL file; parent directory must exist.\n"
            "\n"
            "Numbers are unsigned decimal; only depth and delay may be zero.\n"
            "Outputs final page URLs to stdout and a crawl summary to stderr.\n"
            "Uses robots.txt, UTF-8 HTML checks, default HTTP timeouts and five redirects.\n"
-           "Corpus export is not implemented yet.\n";
+           "With --output, also writes page records as JSONL; existing paths are rejected.\n";
 }
 
 auto version() noexcept -> std::string_view

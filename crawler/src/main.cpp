@@ -1,5 +1,8 @@
 #include "hfs/cli.hpp"
+#include "hfs/jsonl.hpp"
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -32,11 +35,32 @@ auto run(int argc, char* argv[]) -> int
     }
 
     if (const auto* command = std::get_if<hfs::CrawlCommand>(&action)) {
-        const auto summary = hfs::crawl(command->seeds, command->allowed_hosts, [](const auto& page) {
+        std::ofstream output;
+        if (command->output_path) {
+            const std::filesystem::path path{*command->output_path};
+            if (std::filesystem::exists(std::filesystem::symlink_status(path))) {
+                throw std::runtime_error{"JSONL output path already exists"};
+            }
+            // Binary mode keeps LF line endings identical on Windows and Unix.
+            output.open(path, std::ios::out | std::ios::binary);
+            if (!output) {
+                throw std::runtime_error{"Could not open JSONL output file"};
+            }
+        }
+        const auto summary = hfs::crawl(command->seeds, command->allowed_hosts, [&output](const auto& page) {
+            if (output.is_open()) {
+                hfs::write_page_jsonl(output, page);
+            }
             if (!(std::cout << page.url << '\n')) {
                 throw std::runtime_error{"Could not write page URL to stdout"};
             }
         }, command->options);
+        if (output.is_open()) {
+            output.close();
+            if (!output) {
+                throw std::runtime_error{"Could not close JSONL output file"};
+            }
+        }
         std::cout.flush();
         if (!std::cout) {
             throw std::runtime_error{"Could not flush page URLs to stdout"};

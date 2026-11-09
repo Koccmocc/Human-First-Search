@@ -1,10 +1,12 @@
 add_library(crawler_core STATIC
     src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp
     src/robots.cpp src/robots_loading.cpp src/robots_cache.cpp src/page_fetcher.cpp
-    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp src/html_input.cpp src/page_identity.cpp)
+    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp src/html_input.cpp src/page_identity.cpp
+    src/jsonl.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
+target_link_libraries(crawler_core PRIVATE nlohmann_json::nlohmann_json)
 if(WIN32)
     # SHA-256 uses the operating system provider, without an extra runtime DLL.
     target_link_libraries(crawler_core PRIVATE bcrypt)
@@ -28,6 +30,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(jsonl_test tests/jsonl_test.cpp)
+    target_link_libraries(jsonl_test PRIVATE crawler_core GTest::gtest_main nlohmann_json::nlohmann_json)
+    target_compile_options(jsonl_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(jsonl_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(page_identity_test tests/page_identity_test.cpp)
     target_link_libraries(page_identity_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(page_identity_test PRIVATE -Wall -Wextra -Wpedantic)

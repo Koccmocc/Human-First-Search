@@ -2,8 +2,9 @@
 
 Local university proof of concept. The C++ crawler supports bounded traversal
 from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
-HTML validation. The CLI prints discovered page URLs and session statistics.
-Main-article extraction and JSONL corpus export remain future steps.
+HTML validation. The CLI prints discovered page URLs and session statistics,
+and can export draft JSONL records. Main-article selection, language detection
+and text deduplication remain future steps.
 Development is independent of the team's Python/API/UI.
 
 ## Build and run
@@ -37,6 +38,7 @@ pinned GoogleTest 1.18.0 source. It is not needed by the application itself.
 Python 3 is required for tests: its standard library hosts the loopback HTTP fixture.
 Configuration also downloads the pinned libcurl source described below.
 The robots.txt parser and its Abseil dependency are also fetched at pinned revisions.
+JSONL export additionally uses the pinned nlohmann/json header library.
 
 ## Run a bounded crawl
 
@@ -71,9 +73,10 @@ default HTTP/robots options and redirect limit of five; those are not CLI flags
 yet. `--help`, `-h`, `--version`, and `crawl --help` are also available. No arguments
 display help.
 
-Stdout contains one final URL per delivered HTML page. The callback receives the
-extracted content, but this CLI increment prints URLs only. Stderr contains a
-single session summary such as:
+Stdout contains one final URL per delivered HTML page. With `--output PATH`, the
+same callback also writes each page as a JSONL record. The parent directory must
+exist; destinations already present at the preflight check are rejected. Stderr
+contains a single session summary such as:
 
 ```text
 crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 duplicate_pages=0 rejected_seeds=0 pending_urls=0
@@ -90,6 +93,36 @@ Argument unit tests cover canonicalization, ownership, numeric boundaries and
 invalid inputs. `crawler.cli_crawl` uses the real executable against the local
 fixture to verify discovery, limits, validation before requests and failed-page
 statistics. It needs no internet.
+
+## Export JSONL records
+
+Choose a new output file and run from the repository root:
+
+```powershell
+New-Item -ItemType Directory -Force data | Out-Null
+./build/debug/crawler/hfs-crawler.exe crawl --seed https://example.org/ --allow-host example.org --max-pages 5 --max-depth 1 --output data/corpus.jsonl
+```
+
+The file contains one compact UTF-8 JSON object per LF-terminated line, without
+a BOM. Pages stream to disk as they arrive. An empty result creates an empty
+file. The CLI checks open, write and close failures and exits `1` on fatal output
+errors; a failed run can leave partial output. Stdout remains the URL list and
+stderr remains the summary. See [the draft corpus format](docs/corpus-format.md)
+for fields, unknown metadata and current extraction limits.
+
+`cmake/Json.cmake` pins nlohmann/json 3.12.0 to commit
+`55f93686c01528224f448c19128836e7df245f72`. Its
+[MIT license](https://github.com/nlohmann/json/blob/55f93686c01528224f448c19128836e7df245f72/LICENSE.MIT)
+must accompany redistributed library code. Upstream tests/install are disabled;
+its headers remain private to serialization and its own tests. Offline configuration
+can use `FETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON` pointing to a verified checkout.
+The MinGW checks used this override; automatic FetchContent downloading remains
+unverified. The library adds no runtime DLL.
+
+JSONL unit tests cover schema fields, escaping, repeatability, invalid UTF-8 and
+stream failures. The CLI fixture independently reads exports with Python `json`,
+verifies IDs/text hashes with `hashlib`, compares repeated exports byte for byte,
+and checks multiple/empty outputs and failures before HTTP requests.
 
 ## Structure and decisions
 
@@ -185,7 +218,8 @@ excluded subtrees, UTF-8 entities, result ownership, moves and deep nesting.
 This is structural body text, not article selection or browser-visible text:
 navigation, footers and hidden elements may remain. CSS is not evaluated and no
 JavaScript is executed. These limitations must be considered before corpus export.
-Article selection, local file input and JSONL export will follow in separate changes.
+Article selection and local file input remain separate changes. Draft JSONL export
+preserves this structural body text, as documented above.
 
 ### Link candidates
 
@@ -596,7 +630,7 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 
 The input gate below validates UTF-8 before extraction. The extractor returns
 structural body text. Charset conversion, HTML `base`, main-article selection, language detection,
-JSONL output, text deduplication, detailed crawl logs and a global duration limit remain
+Text deduplication, detailed crawl logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
@@ -669,7 +703,8 @@ extra whitespace collapsing and locale-dependent transformations are not applied
 The low-level identity helper hashes any byte string by its explicit length,
 including an empty string or embedded NUL; the crawl input gate still validates
 HTML before extraction. Stable corpus reproduction requires retaining the URL
-and extraction rules, whose version metadata belongs in the future export.
+and extraction rules. JSONL records retain `extractor_version` and
+`url_normalization_version`; changes to those rules must update their version tags.
 
 On Windows, SHA-256 uses [Windows CNG](https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptcreatehash)
 through the system `bcrypt` import library. Provider/hash handles use RAII and
@@ -683,5 +718,5 @@ Seven unit scenarios check known SHA-256 vectors (including empty input and a
 million-byte message), independent Python `hashlib` reference values for UTF-8,
 binary data and a canonical URL, content changes, URL distinctions and equivalent
 extracted text from different markup. The local crawl test checks identities
-across redirect aliases and separate sessions. The CLI continues to print URLs;
-JSONL serialization and text-based duplicate removal are separate increments.
+across redirect aliases and separate sessions. The CLI prints URLs and optionally
+exports JSONL records. Text-based duplicate removal remains a separate increment.

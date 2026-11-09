@@ -3,6 +3,7 @@
 #include "hfs/crawl.hpp"
 
 #include <span>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -19,6 +20,7 @@ struct CrawlCommand {
     std::vector<std::string> seeds;
     std::vector<std::string> allowed_hosts;
     CrawlOptions options;
+    std::optional<std::string> output_path;
 };
 
 // Parsed commands and errors own their strings; argv can be released afterwards.

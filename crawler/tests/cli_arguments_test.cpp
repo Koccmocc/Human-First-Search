@@ -46,6 +46,20 @@ TEST(CliArguments, BuildsOwningCanonicalConfigurationWithMultipleSeedsAndHosts)
     EXPECT_EQ(std::get<hfs::CrawlCommand>(owned).seeds.front(), "https://example.org/owned");
 }
 
+TEST(CliArguments, AcceptsOneOwningOutputPathAndRejectsMissingEmptyOrRepeatedPaths)
+{
+    std::string path{"data/corpus with spaces.jsonl"};
+    const auto result = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+                               "--output", path});
+    path.assign("changed");
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+    EXPECT_EQ(std::get<hfs::CrawlCommand>(result).output_path, "data/corpus with spaces.jsonl");
+    for (const auto& invalid : {parse({"crawl", "--output"}), parse({"crawl", "--output", ""}),
+                                parse({"crawl", "--output", "one", "--output", "two"})}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(invalid));
+    }
+}
+
 TEST(CliArguments, KeepsCrawlDefaultsAndAllowsZeroDepthAndDelay)
 {
     const auto defaults = parse({"crawl", "--allow-host", "example.org", "--seed", "https://example.org/"});

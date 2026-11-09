@@ -43,6 +43,7 @@ class Handler(BaseHTTPRequestHandler):
             "/page-cross-public": (302, f"http://localhost:{self.server.server_port}/public"),
             "/crawl/alias": (302, "/crawl/nested/page"),
             "/crawl/alias-two": (301, "/crawl/nested/page"),
+            "/crawl/export-alias": (302, "/crawl/export"),
         }
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
@@ -58,6 +59,8 @@ class Handler(BaseHTTPRequestHandler):
             "/crawl/deep": b'<title>Deep</title><p>Deep body</p>',
             "/crawl/nested/page": b'<title>Redirected</title><a href="child">Child</a>',
             "/crawl/nested/child": b'<title>Child</title><p>Child body</p>',
+            "/crawl/export": b'<title>Export &quot;title&quot; \\ caf\xc3\xa9</title>'
+                             b'<p>First &quot;line&quot; \\ path</p><p>Second caf\xc3\xa9 &#1;</p>',
         }
         body = crawl_pages.get(self.path, body)
         if self.path in ("/crawl/error", "/crawl/plain", "/crawl/untyped", "/crawl/htmlish"):
