@@ -1,5 +1,7 @@
 #pragma once
 
+#include "hfs/crawl.hpp"
+
 #include <span>
 #include <string>
 #include <string_view>
@@ -13,10 +15,16 @@ struct CliError {
     std::string message;
 };
 
-// Exactly one alternative is active: an action or an owning error diagnostic.
-using CliResult = std::variant<CliAction, CliError>;
+struct CrawlCommand {
+    std::vector<std::string> seeds;
+    std::vector<std::string> allowed_hosts;
+    CrawlOptions options;
+};
 
-// Views are borrowed only for this call; errors own their diagnostic text.
+// Parsed commands and errors own their strings; argv can be released afterwards.
+using CliResult = std::variant<CliAction, CrawlCommand, CliError>;
+
+// Views are borrowed only for this call. Validation performs no network requests.
 [[nodiscard]] auto parse_arguments(std::span<const std::string_view> arguments)
     -> CliResult;
 

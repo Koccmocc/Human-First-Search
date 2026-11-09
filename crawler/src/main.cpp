@@ -1,10 +1,23 @@
 #include "hfs/cli.hpp"
 
 #include <iostream>
+#include <stdexcept>
 #include <string_view>
 #include <vector>
 
-auto main(int argc, char* argv[]) -> int
+namespace {
+
+auto stop_name(hfs::CrawlStop stop) noexcept -> std::string_view
+{
+    switch (stop) {
+    case hfs::CrawlStop::queue_empty: return "queue_empty";
+    case hfs::CrawlStop::page_limit: return "page_limit";
+    case hfs::CrawlStop::target_limit: return "target_limit";
+    }
+    return "unknown";
+}
+
+auto run(int argc, char* argv[]) -> int
 {
     // argv owns these strings until main returns; no string copies are needed.
     std::vector<std::string_view> arguments;
@@ -18,6 +31,26 @@ auto main(int argc, char* argv[]) -> int
         return 2;
     }
 
+    if (const auto* command = std::get_if<hfs::CrawlCommand>(&action)) {
+        const auto summary = hfs::crawl(command->seeds, command->allowed_hosts, [](const auto& page) {
+            if (!(std::cout << page.url << '\n')) {
+                throw std::runtime_error{"Could not write page URL to stdout"};
+            }
+        }, command->options);
+        std::cout.flush();
+        if (!std::cout) {
+            throw std::runtime_error{"Could not flush page URLs to stdout"};
+        }
+        std::cerr << "crawl: stop=" << stop_name(summary.stop)
+                  << " pages=" << summary.pages << " targets=" << summary.targets_processed
+                  << " fetch_failures=" << summary.fetch_failures
+                  << " skipped_responses=" << summary.skipped_responses
+                  << " duplicate_pages=" << summary.duplicate_pages
+                  << " rejected_seeds=" << summary.rejected_seeds
+                  << " pending_urls=" << summary.pending_urls << '\n';
+        return std::cerr ? 0 : 1;
+    }
+
     switch (std::get<hfs::CliAction>(action)) {
     case hfs::CliAction::help:
         std::cout << hfs::help_text();
@@ -28,4 +61,16 @@ auto main(int argc, char* argv[]) -> int
     }
 
     return 0;
+}
+
+} // namespace
+
+auto main(int argc, char* argv[]) -> int
+{
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "error: " << error.what() << '\n';
+        return 1;
+    }
 }

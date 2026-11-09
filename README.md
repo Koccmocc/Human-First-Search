@@ -1,9 +1,10 @@
 # Human-first Search
 
-Local university proof of concept. The C++ library currently provides HTML/URL
-utilities and a bounded single-request HTTP client. The CLI only supports help
-and version; automated crawling, main-article extraction and JSONL export are
-not implemented yet. Development is independent of the team's Python/API/UI.
+Local university proof of concept. The C++ crawler supports bounded traversal
+from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
+HTML validation. The CLI prints discovered page URLs and session statistics.
+Main-article extraction and JSONL corpus export remain future steps.
+Development is independent of the team's Python/API/UI.
 
 ## Build and run
 
@@ -37,6 +38,59 @@ Python 3 is required for tests: its standard library hosts the loopback HTTP fix
 Configuration also downloads the pinned libcurl source described below.
 The robots.txt parser and its Abseil dependency are also fetched at pinned revisions.
 
+## Run a bounded crawl
+
+Example of a small live crawl, subject to the site's robots rules:
+
+```powershell
+./build/debug/crawler/hfs-crawler.exe crawl --seed https://example.org/ --allow-host example.org --max-pages 5 --max-targets 20 --max-depth 1
+```
+
+`--seed URL` and `--allow-host HOST` are both required and repeatable. Seeds must
+be absolute HTTP(S) URLs without credentials. Hosts contain no scheme, path or
+port; bracketed IPv6 is accepted. Host names and seeds are canonicalized using
+the existing URL module. Repeated host names are collapsed. Subdomains require
+their own explicit allowance. Every seed is checked against the complete host
+list before crawling, regardless of argument order. An out-of-scope seed rejects
+the entire command before any request occurs.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--max-pages N` | 1000 | Maximum delivered HTML records |
+| `--max-targets N` | 5000 | Maximum popped queue entries, including failures |
+| `--max-depth N` | 3 | Maximum link depth; seeds have depth zero |
+| `--max-pending N` | 1000 | Pending queue capacity |
+| `--max-urls N` | 5000 | Total admitted unique URL budget |
+| `--delay-ms N` | 1000 | Per-host interval, shared by robots and page requests |
+
+Pass options and values as separate arguments (`--max-pages 5`). Numbers must
+be unsigned decimal integers in range. Only depth and delay may be zero; use
+zero delay for local fixtures. Repeated numeric options, unknown arguments,
+missing values and malformed inputs are errors. The CLI retains the library's
+default HTTP/robots options and redirect limit of five; those are not CLI flags
+yet. `--help`, `-h`, `--version`, and `crawl --help` are also available. No arguments
+display help.
+
+Stdout contains one final URL per delivered HTML page. The callback receives the
+extracted content, but this CLI increment prints URLs only. Stderr contains a
+single session summary such as:
+
+```text
+crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 duplicate_pages=0 rejected_seeds=0 pending_urls=0
+```
+
+Exit `0` means the session completed normally, including a configured limit or
+zero delivered pages. Inspect the summary for failures and skipped responses;
+exit `0` does not promise that a desired corpus size was reached. Invalid arguments
+exit `2` before crawling. Fatal runtime or output errors exit `1`; pages printed
+before such an error remain partial output. Help/version use stdout and argument
+or runtime diagnostics use stderr.
+
+Argument unit tests cover canonicalization, ownership, numeric boundaries and
+invalid inputs. `crawler.cli_crawl` uses the real executable against the local
+fixture to verify discovery, limits, validation before requests and failed-page
+statistics. It needs no internet.
+
 ## Structure and decisions
 
 ### VS Code IntelliSense
@@ -61,16 +115,17 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `crawler/include/hfs/`: public interfaces of the crawler library.
 - `crawler/src/cli.cpp`: argument handling, independent of console output.
 - `crawler/src/main.cpp`: process entry point, output and exit codes.
-- `crawler/tests/cli_test.cmake`: CLI checks against the built executable.
+- `crawler/tests/cli_test.cmake`: help/version and argument-error process checks.
+- `crawler/tests/cli_crawl_test.py`: local crawl checks against the built executable.
 - `docs/liubomyr-plan.md`: scope, implementation stages and draft corpus contract.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
-either a `CliAction` or a `CliError`, keeping success and failure mutually exclusive
+either a `CliAction`, an owning `CrawlCommand` or a `CliError`, keeping commands and errors mutually exclusive
 without exceptions for ordinary argument errors. Console output uses standard
 streams, requiring no additional terminal-support library.
-Exit code `0` means success and `2` means invalid arguments;
-no arguments display help. Diagnostics go to stderr, successful output to stdout.
+Exit codes and stream usage are described in the CLI section above.
+No arguments display help.
 Unsupported arguments fail rather than starting an unintended operation.
 
 Warnings are enabled on our targets only. They are not treated as errors yet:
@@ -130,8 +185,7 @@ excluded subtrees, UTF-8 entities, result ownership, moves and deep nesting.
 This is structural body text, not article selection or browser-visible text:
 navigation, footers and hidden elements may remain. CSS is not evaluated and no
 JavaScript is executed. These limitations must be considered before corpus export.
-The CLI still only supports help and version. Article selection, local file input
-and JSONL export will follow in separate changes.
+Article selection, local file input and JSONL export will follow in separate changes.
 
 ### Link candidates
 
@@ -229,7 +283,7 @@ optional redirect Location) or
 return an error without exposing a partial body as a complete response. The body
 limit is checked before appending, including when Content-Length is absent.
 It does not bound all libcurl allocations or response headers. Body bytes are
-not decompressed or converted to UTF-8 here; HTML/type/encoding policy is future work.
+not decompressed or converted to UTF-8 here; the crawl input gate supplies HTML/type/encoding checks.
 
 libcurl global initialization is shared inside the module; each call owns and
 releases its easy handle. Configuration/initialization errors and C++ allocation
@@ -237,7 +291,7 @@ failures can throw; callback exceptions are captured and rethrown after libcurl
 returns, never unwound through C frames.
 
 This is a transport primitive: the caller must enforce host scope, robots.txt
-and per-host delays before requesting a URL. It is not yet exposed through the CLI.
+and per-host delays before requesting a URL. The CLI uses it through the crawl session.
 `HttpResponse::redirect_location` copies the first Location header from
 301/302/303/307/308 responses, using libcurl's response-header API. It is absent
 when no header is present or the status is not one of these redirects. The value
@@ -275,8 +329,8 @@ including 4xx/5xx or a 302 without Location, terminate the chain normally.
 URLs), the original `HttpError`, or a `FetchError` describing policy denial, invalid
 URL, a redirect cycle or the hop limit. Failed chains do not expose a successful
 partial result. Timeout/body limits apply to each request independently, not to the
-whole chain. There are no retries or HTTPS-downgrade restrictions yet. The CLI is
-unchanged. Tests exercise an allowed chain, denied initial/redirect requests,
+whole chain. There are no retries or HTTPS-downgrade restrictions yet.
+Tests exercise an allowed chain, denied initial/redirect requests,
 cross-host denial, transition limits, cycles and transport-error propagation.
 
 ### Robots.txt parser dependency
@@ -542,8 +596,8 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 The input gate below validates UTF-8 before extraction. The extractor returns
 structural body text. Charset conversion, HTML `base`, main-article selection, language detection,
 text hashes, JSONL output, detailed crawl logs and a global duration limit remain
-separate increments. The CLI still exposes help/version; this loop is a library
-entry point until crawl configuration and command-line execution are added.
+separate increments. The CLI `crawl` command configures and invokes this library
+entry point as described above.
 
 Nine GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and

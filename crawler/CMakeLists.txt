@@ -20,6 +20,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(cli_arguments_test tests/cli_arguments_test.cpp)
+    target_link_libraries(cli_arguments_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(cli_arguments_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(cli_arguments_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(html_input_test tests/html_input_test.cpp)
     target_link_libraries(html_input_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(html_input_test PRIVATE -Wall -Wextra -Wpedantic)
@@ -46,6 +51,11 @@ if(BUILD_TESTING)
     gtest_discover_tests(robots_parser_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME crawler.cli_crawl COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/http_fixture.py" "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_crawl_test.py" "$<TARGET_FILE:hfs-crawler>")
+    set_tests_properties(crawler.cli_crawl PROPERTIES TIMEOUT 20)
+
     add_executable(crawl_test tests/crawl_test.cpp)
     target_link_libraries(crawl_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(crawl_test PRIVATE -Wall -Wextra -Wpedantic)
