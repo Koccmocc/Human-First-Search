@@ -1,30 +1,10 @@
 #include "hfs/crawl.hpp"
 #include "hfs/html_document.hpp"
+#include "hfs/html_input.hpp"
 
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
-
-namespace {
-
-auto is_html(std::string_view content_type) -> bool
-{
-    auto media_type = content_type.substr(0, content_type.find(';'));
-    const auto first = media_type.find_first_not_of(" \t");
-    if (first == std::string_view::npos) {
-        return false;
-    }
-    media_type = media_type.substr(first, media_type.find_last_not_of(" \t") - first + 1);
-    std::string lower{media_type};
-    for (auto& ch : lower) {
-        if (ch >= 'A' && ch <= 'Z') {
-            ch = static_cast<char>(ch + ('a' - 'A'));
-        }
-    }
-    return lower == "text/html";
-}
-
-} // namespace
 
 namespace hfs {
 
@@ -70,7 +50,8 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const auto& response = fetched->response;
         // Error pages and other media must not become HTML discovery sources.
-        if (response.status != 200 || !is_html(response.content_type)) {
+        if (response.status != 200 ||
+            check_html_input(response.content_type, response.body) != HtmlInputStatus::ready) {
             ++summary.skipped_responses;
             continue;
         }
@@ -79,7 +60,11 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
             continue;
         }
 
-        const HtmlDocument document{response.body};
+        std::string_view html{response.body};
+        if (html.starts_with("\xEF\xBB\xBF")) {
+            html.remove_prefix(3); // The encoding signature is not document text.
+        }
+        const HtmlDocument document{html};
         const CrawlTarget parent{fetched->final_url, target->depth};
         const CrawledPage page{fetched->final_url, document.title(), document.body_text(),
                                target->depth, response.status, response.content_type,

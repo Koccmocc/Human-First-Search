@@ -64,6 +64,21 @@ class Handler(BaseHTTPRequestHandler):
             body = b'<a href="/must-not-follow">Do not discover</a>'
         if self.path == "/crawl/error":
             status = 404
+        encoding_cases = {
+            "/encoding/utf8": ("text/html; charset=\"UTF-8\"", b"<title>Caf\xc3\xa9</title><p>UTF-8</p>"),
+            "/encoding/undeclared": ("text/html", b"<title>Undeclared</title><p>UTF-8</p>"),
+            "/encoding/bom": ("text/html; charset=windows-1252", b"\xef\xbb\xbf<title>BOM</title><p>Clean body</p>"),
+            "/encoding/meta": ("text/html", b"<meta charset=windows-1252>"),
+            "/encoding/legacy": ("text/html; charset=windows-1252", b"<p>Caf\xe9</p>"),
+            "/encoding/broken": ("text/html; charset=utf-8", b"<p>Broken \xff</p>"),
+            "/encoding/ambiguous": ("text/html; charset=utf-8; charset=windows-1252", b"<p>Text</p>"),
+        }
+        encoding_type = None
+        if self.path in encoding_cases:
+            encoding_type, body = encoding_cases[self.path]
+            # Rejected input must never contribute links to the frontier.
+            body += b'<a href="/must-not-follow">Do not discover</a>' if self.path not in (
+                "/encoding/utf8", "/encoding/undeclared", "/encoding/bom") else b""
         if self.path in ("/robots.txt", "/robots-rules"):
             scenario = self.server.robots_case
             body = b"User-agent: HumanFirstSearch\nDisallow: /private\n"
@@ -94,7 +109,7 @@ class Handler(BaseHTTPRequestHandler):
             media_type = "text/plain" if self.path in ("/robots.txt", "/robots-rules") else "text/html"
             media_type = {"/crawl/plain": "text/plain", "/crawl/htmlish": "text/htmlish",
                           "/crawl/nested/page": "Text/HTML"}.get(self.path, media_type)
-            self.send_header("Content-Type", media_type + "; charset=utf-8")
+            self.send_header("Content-Type", encoding_type or media_type + "; charset=utf-8")
         if location is not None:
             self.send_header("Location", location)
         # /large intentionally has no Content-Length to exercise the write limit.

@@ -122,6 +122,23 @@ TEST_F(Crawl, ContinuesAfterPolicyTransportAndRedirectFailures)
     EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
 }
 
+TEST_F(Crawl, SkipsUnsupportedOrBrokenHtmlAndContinuesWithValidUtf8)
+{
+    const auto summary = run({base + "/encoding/legacy", base + "/encoding/meta",
+                              base + "/encoding/broken", base + "/encoding/ambiguous",
+                              base + "/encoding/utf8", base + "/encoding/undeclared",
+                              base + "/encoding/bom"});
+    ASSERT_EQ(pages.size(), 3U);
+    EXPECT_EQ(pages[0].title, "Caf\xC3\xA9");
+    EXPECT_EQ(pages[1].title, "Undeclared");
+    EXPECT_EQ(pages[2].title, "BOM");
+    EXPECT_EQ(pages[2].text, "Clean body");
+    EXPECT_EQ(summary.skipped_responses, 4U);
+    EXPECT_EQ(summary.fetch_failures, 0U);
+    EXPECT_EQ(summary.targets_processed, 7U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+}
+
 TEST_F(Crawl, HandlesEmptyAndRejectedSeedLists)
 {
     EXPECT_EQ(run({}).targets_processed, 0U);

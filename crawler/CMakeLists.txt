@@ -1,7 +1,7 @@
 add_library(crawler_core STATIC
     src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp
     src/robots.cpp src/robots_loading.cpp src/robots_cache.cpp src/page_fetcher.cpp
-    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp)
+    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp src/html_input.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
@@ -20,6 +20,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(html_input_test tests/html_input_test.cpp)
+    target_link_libraries(html_input_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(html_input_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(html_input_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(url_frontier_test tests/url_frontier_test.cpp)
     target_link_libraries(url_frontier_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(url_frontier_test PRIVATE -Wall -Wextra -Wpedantic)

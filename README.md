@@ -539,13 +539,51 @@ cause a repeated download before their shared destination is known. This is URL
 deduplication; identical text at different final URLs is a later corpus concern.
 Rejected discovery candidates retain the frontier's existing admission semantics.
 
-The current extractor assumes UTF-8 HTML and returns structural body text. Charset
-validation/conversion, HTML `base`, main-article selection, language detection,
+The input gate below validates UTF-8 before extraction. The extractor returns
+structural body text. Charset conversion, HTML `base`, main-article selection, language detection,
 text hashes, JSONL output, detailed crawl logs and a global duration limit remain
 separate increments. The CLI still exposes help/version; this loop is a library
 entry point until crawl configuration and command-line execution are added.
 
-Eight GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Nine GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
-failure recovery, seed rejection and consumer errors. No internet is needed.
+failure recovery, encoding rejection, seed rejection and consumer errors. No internet is needed.
+
+### HTML encoding input policy
+
+`check_html_input(content_type, body)` returns `HtmlInputStatus`: `ready`,
+`not_html`, `invalid_content_type`, `unsupported_encoding` or `invalid_text`.
+The crawl loop applies it before creating a DOM or discovering links. Rejections
+increment `skipped_responses` and processing continues with the next target.
+
+The HTTP Content-Type must identify `text/html`. Its parameter parser handles
+case-insensitive names, tokens, double-quoted values, escaped characters and empty
+semicolon entries, using the syntax in [RFC 9110 section 5.6.6](https://www.rfc-editor.org/rfc/rfc9110.html#section-5.6.6).
+Malformed parameters and repeated/empty `charset` parameters are rejected.
+Whitespace around `=` is rejected. A `charset` substring inside another parameter's
+quoted value is not an encoding declaration.
+
+For a well-formed HTML Content-Type, encoding selection uses a BOM first, then an
+HTTP charset, then the first recognized early HTML meta declaration. Lexbor scans
+the first 1024 bytes for meta declarations and resolves encoding labels, including
+its HTML prescan handling of UTF-16 meta labels. Comments do not declare encodings.
+An unknown HTTP charset is rejected; unrecognized meta labels are ignored.
+
+Only UTF-8 and its recognized aliases are accepted. UTF-16/32 BOMs and selected
+legacy encodings are rejected without conversion. A UTF-8 BOM takes precedence
+over a conflicting HTTP charset and is removed before DOM construction. Labels
+such as `us-ascii` map to legacy encodings under Lexbor's web label table and are
+also rejected. ASCII bytes with no declaration remain valid UTF-8 input.
+
+When no encoding is selected, this crawler explicitly falls back to UTF-8. This
+is a corpus policy, not a claim of full browser encoding detection. Every accepted
+body is checked in full using Lexbor's UTF-8 decoder, including bytes beyond the
+meta scan window. Invalid continuations, overlong sequences, surrogates, values
+above U+10FFFF, truncation and NUL bytes cause rejection. No replacement or repair
+is performed. The low-level `HtmlDocument` API retains its UTF-8 caller contract.
+
+Seven unit scenarios cover metadata parsing, declaration precedence, meta scanning
+and Unicode boundaries. The crawl fixture additionally verifies that rejected
+bodies cannot supply links, later valid pages are delivered and a BOM stays out
+of extracted text. These checks need no additional dependencies or internet.

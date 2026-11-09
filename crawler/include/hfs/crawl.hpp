@@ -47,7 +47,8 @@ struct CrawlSummary {
 // The page is borrowed only during the call. Copy it if it must outlive the callback.
 using PageConsumer = std::function<void(const CrawledPage&)>;
 
-// One synchronous session. Supply canonical host names and UTF-8 HTML sources.
+// One synchronous session. Supply canonical host names. Only validated UTF-8 HTML
+// reaches extraction; rejected metadata/encodings count as skipped_responses.
 // Setup, allocation, parser and consumer exceptions abort the session and propagate.
 [[nodiscard]] auto crawl(std::span<const std::string> seeds,
                          std::vector<std::string> allowed_hosts,
