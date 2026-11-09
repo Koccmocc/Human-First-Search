@@ -29,6 +29,9 @@ struct CrawledPage {
     long http_status{};
     std::string content_type;
     std::vector<std::string> requested_urls;
+    // Stable URL identity and exact extracted-text fingerprint, both SHA-256.
+    std::string page_id;
+    std::string text_hash;
 };
 
 enum class CrawlStop { queue_empty, page_limit, target_limit };

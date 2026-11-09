@@ -1,10 +1,18 @@
 add_library(crawler_core STATIC
     src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp
     src/robots.cpp src/robots_loading.cpp src/robots_cache.cpp src/page_fetcher.cpp
-    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp src/html_input.cpp)
+    src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp src/html_input.cpp src/page_identity.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
+if(WIN32)
+    # SHA-256 uses the operating system provider, without an extra runtime DLL.
+    target_link_libraries(crawler_core PRIVATE bcrypt)
+else()
+    # The existing non-Windows curl configuration also requires OpenSSL.
+    find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+    target_link_libraries(crawler_core PRIVATE OpenSSL::Crypto)
+endif()
 
 # Keep the version in project() as the single source of truth.
 target_compile_definitions(crawler_core PRIVATE HFS_VERSION="${PROJECT_VERSION}")
@@ -20,6 +28,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(page_identity_test tests/page_identity_test.cpp)
+    target_link_libraries(page_identity_test PRIVATE crawler_core GTest::gtest_main)
+    target_compile_options(page_identity_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(page_identity_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(cli_arguments_test tests/cli_arguments_test.cpp)
     target_link_libraries(cli_arguments_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_options(cli_arguments_test PRIVATE -Wall -Wextra -Wpedantic)

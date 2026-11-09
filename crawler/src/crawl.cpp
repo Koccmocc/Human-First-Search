@@ -1,6 +1,7 @@
 #include "hfs/crawl.hpp"
 #include "hfs/html_document.hpp"
 #include "hfs/html_input.hpp"
+#include "hfs/page_identity.hpp"
 
 #include <stdexcept>
 #include <unordered_set>
@@ -66,9 +67,14 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const HtmlDocument document{html};
         const CrawlTarget parent{fetched->final_url, target->depth};
-        const CrawledPage page{fetched->final_url, document.title(), document.body_text(),
+        auto text = document.body_text();
+        const auto identity = make_page_identity(fetched->final_url, text);
+        if (!identity) {
+            throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
+        }
+        const CrawledPage page{fetched->final_url, document.title(), std::move(text),
                                target->depth, response.status, response.content_type,
-                               std::move(fetched->requested_urls)};
+                               std::move(fetched->requested_urls), identity->page_id, identity->text_hash};
         consume(page);
         ++summary.pages;
         // Relative references belong to the final URL, not the redirect source.

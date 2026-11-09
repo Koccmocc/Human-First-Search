@@ -569,7 +569,8 @@ The required consumer receives one owning `CrawledPage` by const reference. It m
 write immediately or copy the value for later use; its reference expires after
 the callback. The loop retains the current document and URL bookkeeping rather
 than accumulating every page body. Records include the final URL, title, body
-text, discovery depth, HTTP status, Content-Type and requested redirect chain.
+text, discovery depth, HTTP status, Content-Type, requested redirect chain and
+the `page_id`/`text_hash` values described below.
 
 Only status 200 with media type `text/html` enters extraction and discovery.
 Media type matching is case-insensitive and permits parameters. Missing types,
@@ -595,14 +596,15 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 
 The input gate below validates UTF-8 before extraction. The extractor returns
 structural body text. Charset conversion, HTML `base`, main-article selection, language detection,
-text hashes, JSONL output, detailed crawl logs and a global duration limit remain
+JSONL output, text deduplication, detailed crawl logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Nine GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Ten GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
-failure recovery, encoding rejection, seed rejection and consumer errors. No internet is needed.
+failure recovery, encoding rejection, page identities, seed rejection and consumer errors.
+No internet is needed.
 
 ### HTML encoding input policy
 
@@ -641,3 +643,45 @@ Seven unit scenarios cover metadata parsing, declaration precedence, meta scanni
 and Unicode boundaries. The crawl fixture additionally verifies that rejected
 bodies cannot supply links, later valid pages are delivered and a BOM stays out
 of extracted text. These checks need no additional dependencies or internet.
+
+### Stable page IDs and text hashes
+
+`make_page_identity(final_url, text)` returns an owning `PageIdentity`, or
+`std::nullopt` for an invalid, non-HTTP(S) or credential-bearing URL. It performs
+no network requests. URL/parser setup, hashing backend and allocation failures
+propagate as exceptions. The crawl loop computes this identity before delivering
+each page, including pages reached through redirects.
+
+| Field | Input to SHA-256 | Effect of a change |
+| --- | --- | --- |
+| `page_id` | URL serialized by `resolve_http_url(final_url, "")` | Same canonical URL keeps its ID when content changes |
+| `text_hash` | Exact bytes of the extracted `body_text()` result | Changed extracted text changes its fingerprint; identical text at different URLs has the same fingerprint |
+
+Both strings contain `sha256:` followed by 64 lowercase hexadecimal digits.
+The page ID inherits the URL module's rules: fragments are removed, host/scheme
+case and default ports normalize, while path case and query order remain distinct.
+Redirect source URLs, titles, HTTP metadata, timestamps and session counters are
+not hash inputs. The ID belongs to the final page URL.
+
+Hashing adds no text normalization: whitespace/entity handling is already defined
+by `HtmlDocument::body_text()`. Unicode normalization such as NFC, case folding,
+extra whitespace collapsing and locale-dependent transformations are not applied.
+The low-level identity helper hashes any byte string by its explicit length,
+including an empty string or embedded NUL; the crawl input gate still validates
+HTML before extraction. Stable corpus reproduction requires retaining the URL
+and extraction rules, whose version metadata belongs in the future export.
+
+On Windows, SHA-256 uses [Windows CNG](https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptcreatehash)
+through the system `bcrypt` import library. Provider/hash handles use RAII and
+each call owns its context. This adds no downloaded dependency. Other platforms
+link `OpenSSL::Crypto` and use [EVP_Digest](https://docs.openssl.org/3.0/man3/EVP_DigestInit/),
+alongside the existing OpenSSL requirement for their curl build. The Windows CNG
+path is verified on MinGW GCC in Debug/Release; the non-Windows path has not been
+built in this environment.
+
+Seven unit scenarios check known SHA-256 vectors (including empty input and a
+million-byte message), independent Python `hashlib` reference values for UTF-8,
+binary data and a canonical URL, content changes, URL distinctions and equivalent
+extracted text from different markup. The local crawl test checks identities
+across redirect aliases and separate sessions. The CLI continues to print URLs;
+JSONL serialization and text-based duplicate removal are separate increments.

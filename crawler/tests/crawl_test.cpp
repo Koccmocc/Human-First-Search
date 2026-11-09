@@ -1,4 +1,5 @@
 #include "hfs/crawl.hpp"
+#include "hfs/page_identity.hpp"
 
 #include <gtest/gtest.h>
 
@@ -61,6 +62,26 @@ TEST_F(Crawl, ResolvesLinksAtFinalUrlAndEmitsRedirectDestinationsOnce)
     EXPECT_EQ(pages[1].depth, 1U);
     EXPECT_EQ(summary.targets_processed, 4U);
     EXPECT_EQ(summary.duplicate_pages, 2U);
+}
+
+TEST_F(Crawl, DeliversStableIdentitiesFromFinalUrlAndExtractedText)
+{
+    (void)run({base + "/crawl/alias"});
+    ASSERT_EQ(pages.size(), 2U);
+    const auto expected = hfs::make_page_identity(base + "/crawl/nested/page", "Child");
+    const auto alias = hfs::make_page_identity(base + "/crawl/alias", "Child");
+    ASSERT_TRUE(expected && alias);
+    EXPECT_EQ(pages[0].page_id, expected->page_id);
+    EXPECT_NE(pages[0].page_id, alias->page_id);
+    EXPECT_EQ(pages[0].text_hash, "sha256:8053321281f5d162ee6c1c1263a0d1a88ee2d500e4c30c65dc343f37240aaefd");
+    EXPECT_EQ(pages[1].text_hash, "sha256:fea5e82e5aadd9c7d464a66b92f331ce36d0947901fd6e9eb90234275418e26b");
+    const auto previous_id = pages[0].page_id;
+    const auto previous_hash = pages[0].text_hash;
+    pages.clear();
+    (void)run({base + "/crawl/alias-two"});
+    ASSERT_EQ(pages.size(), 2U);
+    EXPECT_EQ(pages[0].page_id, previous_id);
+    EXPECT_EQ(pages[0].text_hash, previous_hash);
 }
 
 TEST_F(Crawl, LimitsPagesAndTargetsIndependently)
