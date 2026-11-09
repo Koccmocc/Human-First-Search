@@ -4,6 +4,8 @@
 #include "hfs/url_frontier.hpp"
 
 #include <cstddef>
+#include <chrono>
+#include <optional>
 #include <functional>
 #include <span>
 #include <string>
@@ -12,6 +14,8 @@
 namespace hfs {
 
 struct CrawlOptions {
+    using WallClock = std::chrono::system_clock;
+
     FrontierLimits frontier;
     HttpOptions http;
     RobotsCacheOptions robots;
@@ -19,6 +23,8 @@ struct CrawlOptions {
     std::size_t max_pages{1000};
     std::size_t max_targets{5000};
     std::size_t max_redirects{5};
+    // Used only for fetch metadata; request spacing keeps its separate steady clock.
+    std::function<WallClock::time_point()> wall_now{WallClock::now};
 };
 
 struct CrawledPage {
@@ -32,6 +38,8 @@ struct CrawledPage {
     // Stable URL identity and exact extracted-text fingerprint, both SHA-256.
     std::string page_id;
     std::string text_hash;
+    // Observed after the final response returns, before validation/extraction.
+    std::optional<std::chrono::system_clock::time_point> fetched_at;
 };
 
 enum class CrawlStop { queue_empty, page_limit, target_limit };
@@ -52,7 +60,7 @@ using PageConsumer = std::function<void(const CrawledPage&)>;
 
 // One synchronous session. Supply canonical host names. Only validated UTF-8 HTML
 // reaches extraction; rejected metadata/encodings count as skipped_responses.
-// Setup, allocation, parser and consumer exceptions abort the session and propagate.
+// Setup, clock, allocation, parser and consumer exceptions abort the session and propagate.
 [[nodiscard]] auto crawl(std::span<const std::string> seeds,
                          std::vector<std::string> allowed_hosts,
                          const PageConsumer& consume, const CrawlOptions& options = {})

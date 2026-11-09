@@ -3,6 +3,7 @@
 import os
 import hashlib
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
 import sys
@@ -24,6 +25,10 @@ class CliCrawl(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(result.stderr.startswith("crawl: "), result.stderr)
         return dict(item.split("=", 1) for item in result.stderr.removeprefix("crawl: ").split())
+
+    def fetch_time(self, record):
+        self.assertRegex(record["fetched_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        return datetime.strptime(record["fetched_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
     def test_discovers_pages_and_keeps_summary_out_of_stdout(self):
         result = self.run_crawl("--seed", BASE + "/crawl/start", "--max-depth", "1")
@@ -59,7 +64,9 @@ class CliCrawl(unittest.TestCase):
     def test_jsonl_round_trip_preserves_unicode_controls_hashes_and_redirect_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "corpus with spaces.jsonl"
+            earliest = datetime.now(timezone.utc).replace(microsecond=0)
             result = self.run_crawl("--seed", BASE + "/crawl/export-alias", "--output", str(path))
+            latest = datetime.now(timezone.utc)
             self.summary(result)
             raw = path.read_bytes()
             self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
@@ -80,10 +87,17 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["http_status"], 200)
             self.assertEqual(record["depth"], 0)
             self.assertIsNone(record["language"])
-            self.assertIsNone(record["fetched_at"])
+            captured = self.fetch_time(record)
+            self.assertLessEqual(earliest, captured)
+            self.assertLessEqual(captured, latest)
             second = Path(directory) / "second.jsonl"
             self.summary(self.run_crawl("--seed", BASE + "/crawl/export-alias", "--output", str(second)))
-            self.assertEqual(second.read_bytes(), raw)
+            repeated = json.loads(second.read_text(encoding="utf-8"))
+            self.fetch_time(repeated)
+            # Separate live fetches have their own timestamps; stable content stays equal.
+            del repeated["fetched_at"]
+            del record["fetched_at"]
+            self.assertEqual(repeated, record)
 
     def test_jsonl_contains_one_record_per_page_and_empty_export_has_no_records(self):
         with tempfile.TemporaryDirectory() as directory:

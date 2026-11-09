@@ -18,7 +18,7 @@ serialization. This contract is provisional until team integration.
 | `text` | Extracted structural body text; may be empty |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
 | `language` | `null`: language detection has not been implemented |
-| `fetched_at` | `null`: the fetch completion timestamp is not captured yet |
+| `fetched_at` | Captured UTC completion time as `YYYY-MM-DDTHH:MM:SSZ`; `null` if no time was captured |
 | `http_status` | HTTP response status, currently `200` for delivered pages |
 | `content_type` | Original response Content-Type value |
 | `depth` | Link discovery depth, with seeds at zero |
@@ -30,9 +30,26 @@ belongs to extraction; hashing and serialization do not additionally normalize
 Unicode or whitespace. Bump the corresponding version tag when extraction or
 URL normalization rules change.
 
-`language` and `fetched_at` are unknown values, not claims that a page is English
-or that serialization time equals fetch time. Structural body text can still
-contain navigation/footer content. Text duplicates at different URLs are retained.
+`language` is unknown until language detection is implemented. Each delivered
+page's `fetched_at` is observed with `system_clock` immediately after the fetcher
+returns its final response, before HTML validation, extraction, hashing and the
+consumer. Intermediate redirects do not get separate record timestamps. Formatting
+uses UTC calendar arithmetic and the classic numeric locale, with fractions
+floored to whole seconds. It uses no local-time or operating-system formatting API.
+
+`CrawledPage` retains an optional typed instant. A manually constructed page or an
+older export may have no captured time, represented as `null`. Serialization
+preserves that absence rather than inventing a time. `CrawlOptions::wall_now`
+defaults to `system_clock::now` and can be injected for deterministic tests; an
+empty callback is invalid. Clock exceptions abort the session. Host delays still
+use their separate `steady_clock` and do not depend on these wall-clock values.
+
+Independent live fetches can have different timestamps. Serializing the same
+saved record remains deterministic, while comparing separate live exports must
+account for `fetched_at`. Page IDs and text hashes remain independent of time.
+
+Structural body text can still contain navigation/footer content. Text duplicates
+at different URLs are retained.
 This export is an intermediate data format before article selection, language
 filtering, text deduplication and the final reproducibility manifest are complete.
 

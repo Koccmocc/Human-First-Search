@@ -84,6 +84,29 @@ TEST_F(Crawl, DeliversStableIdentitiesFromFinalUrlAndExtractedText)
     EXPECT_EQ(pages[0].text_hash, previous_hash);
 }
 
+TEST_F(Crawl, CapturesOneWallClockTimePerFinalResponseBeforeDelivery)
+{
+    using namespace std::chrono;
+    const auto first = sys_days{2026y/November/9} + 12h;
+    system_clock::time_point now = first;
+    std::size_t calls{};
+    options.wall_now = [&] {
+        ++calls;
+        const auto captured = now;
+        now += 1s;
+        return captured;
+    };
+    (void)run({base + "/crawl/alias"});
+    ASSERT_EQ(pages.size(), 2U);
+    EXPECT_EQ(calls, 2U); // The intermediate redirect does not become a page record.
+    ASSERT_TRUE(pages[0].fetched_at);
+    ASSERT_TRUE(pages[1].fetched_at);
+    EXPECT_EQ(*pages[0].fetched_at, first);
+    EXPECT_EQ(*pages[1].fetched_at, first + 1s);
+    now += 1h;
+    EXPECT_EQ(*pages[0].fetched_at, first); // Stored instants do not follow later clock changes.
+}
+
 TEST_F(Crawl, LimitsPagesAndTargetsIndependently)
 {
     options.max_pages = 1;
@@ -179,6 +202,9 @@ TEST_F(Crawl, ValidatesLimitsAndConsumerAndPropagatesConsumerExceptions)
     EXPECT_THROW(run({}), std::invalid_argument);
     options.max_targets = 1;
     EXPECT_THROW((void)hfs::crawl({}, {}, {}, options), std::invalid_argument);
+    options.wall_now = {};
+    EXPECT_THROW(run({base + "/must-not-follow"}), std::invalid_argument);
+    options.wall_now = hfs::CrawlOptions::WallClock::now;
 
     const std::vector<std::string> seeds{base + "/crawl/b"};
     EXPECT_THROW((void)hfs::crawl(seeds, {"127.0.0.1"}, [](const auto&) {

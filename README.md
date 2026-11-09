@@ -121,8 +121,10 @@ unverified. The library adds no runtime DLL.
 
 JSONL unit tests cover schema fields, escaping, repeatability, invalid UTF-8 and
 stream failures. The CLI fixture independently reads exports with Python `json`,
-verifies IDs/text hashes with `hashlib`, compares repeated exports byte for byte,
-and checks multiple/empty outputs and failures before HTTP requests.
+verifies IDs/text hashes with `hashlib`, checks real UTC capture times and stable
+fields across repeated live exports, and covers multiple/empty outputs and failures
+before HTTP requests. Fixed-record
+unit tests still verify byte-for-byte serialization, including the captured time.
 
 ## Structure and decisions
 

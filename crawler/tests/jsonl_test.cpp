@@ -9,6 +9,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <streambuf>
+#include <utility>
 
 namespace {
 auto sample_page() -> hfs::CrawledPage
@@ -21,6 +22,8 @@ auto sample_page() -> hfs::CrawledPage
     page.http_status = 200;
     page.content_type = "text/html; charset=utf-8";
     page.requested_urls = {"https://example.org/alias", page.url};
+    using namespace std::chrono;
+    page.fetched_at = sys_days{2026y/November/9} + 12h + 34min + 56s + 999ms;
     const auto identity = hfs::make_page_identity(page.url, page.text).value();
     page.page_id = identity.page_id;
     page.text_hash = identity.text_hash;
@@ -28,7 +31,7 @@ auto sample_page() -> hfs::CrawledPage
 }
 }
 
-TEST(Jsonl, SerializesPageFieldsAndExplicitUnknownMetadata)
+TEST(Jsonl, SerializesPageFieldsCapturedTimeAndUnknownLanguage)
 {
     const auto page = sample_page();
     std::ostringstream output;
@@ -47,7 +50,33 @@ TEST(Jsonl, SerializesPageFieldsAndExplicitUnknownMetadata)
     EXPECT_EQ(record.at("content_type"), page.content_type);
     EXPECT_EQ(record.at("requested_urls"), page.requested_urls);
     EXPECT_TRUE(record.at("language").is_null());
-    EXPECT_TRUE(record.at("fetched_at").is_null());
+    EXPECT_EQ(record.at("fetched_at"), "2026-11-09T12:34:56Z");
+}
+
+TEST(Jsonl, FormatsUtcAcrossEpochAndLeapDayBoundaries)
+{
+    using namespace std::chrono;
+    const std::pair<system_clock::time_point, std::string_view> cases[]{
+        {system_clock::time_point{}, "1970-01-01T00:00:00Z"},
+        {system_clock::time_point{} - 1ms, "1969-12-31T23:59:59Z"},
+        {sys_days{2024y/February/29} + 23h + 59min + 59s + 999ms, "2024-02-29T23:59:59Z"},
+        {sys_days{2024y/March/1}, "2024-03-01T00:00:00Z"}};
+    for (const auto& [time, expected] : cases) {
+        auto page = sample_page();
+        page.fetched_at = time;
+        std::ostringstream output;
+        hfs::write_page_jsonl(output, page);
+        EXPECT_EQ(nlohmann::json::parse(output.str()).at("fetched_at"), expected);
+    }
+}
+
+TEST(Jsonl, KeepsMissingCaptureTimeExplicitlyUnknown)
+{
+    auto page = sample_page();
+    page.fetched_at.reset();
+    std::ostringstream output;
+    hfs::write_page_jsonl(output, page);
+    EXPECT_TRUE(nlohmann::json::parse(output.str()).at("fetched_at").is_null());
 }
 
 TEST(Jsonl, EscapesControlsAndQuotesInOneUtf8Line)

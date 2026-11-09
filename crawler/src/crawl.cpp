@@ -12,8 +12,8 @@ namespace hfs {
 auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_hosts,
            const PageConsumer& consume, const CrawlOptions& options) -> CrawlSummary
 {
-    if (!consume || options.max_pages == 0 || options.max_targets == 0) {
-        throw std::invalid_argument{"Crawl requires a consumer and positive page/target limits"};
+    if (!consume || !options.wall_now || options.max_pages == 0 || options.max_targets == 0) {
+        throw std::invalid_argument{"Crawl requires a consumer, wall clock and positive page/target limits"};
     }
 
     UrlFrontier frontier{allowed_hosts, options.frontier};
@@ -49,6 +49,8 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
             ++summary.fetch_failures;
             continue;
         }
+        // Capture completion before HTML parsing, hashing or consumer work begins.
+        const auto fetched_at = options.wall_now();
         const auto& response = fetched->response;
         // Error pages and other media must not become HTML discovery sources.
         if (response.status != 200 ||
@@ -74,7 +76,8 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const CrawledPage page{fetched->final_url, document.title(), std::move(text),
                                target->depth, response.status, response.content_type,
-                               std::move(fetched->requested_urls), identity->page_id, identity->text_hash};
+                               std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
+                               fetched_at};
         consume(page);
         ++summary.pages;
         // Relative references belong to the final URL, not the redirect source.
