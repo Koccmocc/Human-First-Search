@@ -154,7 +154,7 @@ auto help_text() noexcept -> std::string_view
            "Crawl options (separate each option from its value):\n"
            "  --seed URL          Absolute HTTP(S) seed; repeatable and required.\n"
            "  --allow-host HOST   Explicit host without scheme/path/port; repeatable and required.\n"
-           "  --max-pages N       Delivered HTML page limit (default 1000).\n"
+           "  --max-pages N       Unique-text HTML page limit (default 1000).\n"
            "  --max-targets N     Processed queue entry limit (default 5000).\n"
            "  --max-depth N       Link depth; seeds are zero (default 3).\n"
            "  --max-pending N     Pending queue capacity (default 1000).\n"
@@ -165,6 +165,7 @@ auto help_text() noexcept -> std::string_view
            "Numbers are unsigned decimal; only depth and delay may be zero.\n"
            "Outputs final page URLs to stdout and a crawl summary to stderr.\n"
            "Uses robots.txt, UTF-8 HTML checks, default HTTP timeouts and five redirects.\n"
+           "Keeps the first page per text SHA-256; duplicate pages still supply links.\n"
            "With --output, also writes page records as JSONL; existing paths are rejected.\n";
 }
 

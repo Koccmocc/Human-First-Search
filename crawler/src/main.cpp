@@ -70,6 +70,7 @@ auto run(int argc, char* argv[]) -> int
                   << " fetch_failures=" << summary.fetch_failures
                   << " skipped_responses=" << summary.skipped_responses
                   << " duplicate_pages=" << summary.duplicate_pages
+                  << " duplicate_texts=" << summary.duplicate_texts
                   << " rejected_seeds=" << summary.rejected_seeds
                   << " pending_urls=" << summary.pending_urls << '\n';
         return std::cerr ? 0 : 1;

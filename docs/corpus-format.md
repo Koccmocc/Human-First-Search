@@ -48,10 +48,19 @@ Independent live fetches can have different timestamps. Serializing the same
 saved record remains deterministic, while comparing separate live exports must
 account for `fetched_at`. Page IDs and text hashes remain independent of time.
 
-Structural body text can still contain navigation/footer content. Text duplicates
-at different URLs are retained.
+The crawl loop delivers only the first page per `text_hash` during its session.
+Representative choice follows ordered seeds, FIFO processing and DOM link order;
+the same configuration and fetch outcomes reproduce the choice. Different seed
+order can choose a different URL/title/metadata. Text duplicates still supply
+links to the frontier, subject to the existing crawl limits and access policy.
+The index retains SHA-256 fingerprints, not copies of corpus texts. The standalone
+JSONL writer has no deduplication state and writes each supplied record.
+
+Structural body text can still contain navigation/footer content. Empty bodies
+are not yet filtered and form one text-fingerprint group.
 This export is an intermediate data format before article selection, language
-filtering, text deduplication and the final reproducibility manifest are complete.
+filtering and the final reproducibility manifest are complete. Detailed mapping
+from skipped URLs to their representatives belongs to the future crawl journal.
 
 `write_page_jsonl(output, page)` accepts a page produced by the crawl loop. It
 preserves the supplied fields and does not recompute IDs, validate their semantic

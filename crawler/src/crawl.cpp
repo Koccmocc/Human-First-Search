@@ -25,7 +25,8 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
     }
 
-    std::unordered_set<std::string> emitted_urls;
+    std::unordered_set<std::string> processed_urls;
+    std::unordered_set<std::string> seen_text_hashes;
     while (frontier.size() != 0) {
         if (summary.pages == options.max_pages) {
             summary.stop = CrawlStop::page_limit;
@@ -37,8 +38,8 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const auto target = frontier.pop();
         ++summary.targets_processed;
-        // A previous redirect may already have delivered this queued destination.
-        if (emitted_urls.contains(target->url)) {
+        // A previous redirect may already have processed this queued destination.
+        if (processed_urls.contains(target->url)) {
             ++summary.duplicate_pages;
             continue;
         }
@@ -58,7 +59,7 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
             ++summary.skipped_responses;
             continue;
         }
-        if (!emitted_urls.insert(fetched->final_url).second) {
+        if (!processed_urls.insert(fetched->final_url).second) {
             ++summary.duplicate_pages;
             continue;
         }
@@ -74,12 +75,18 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         if (!identity) {
             throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
         }
-        const CrawledPage page{fetched->final_url, document.title(), std::move(text),
-                               target->depth, response.status, response.content_type,
-                               std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
-                               fetched_at};
-        consume(page);
-        ++summary.pages;
+        if (seen_text_hashes.insert(identity->text_hash).second) {
+            // FIFO chooses the first representative; only unique text uses the page budget.
+            const CrawledPage page{fetched->final_url, document.title(), std::move(text),
+                                   target->depth, response.status, response.content_type,
+                                   std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
+                                   fetched_at};
+            consume(page);
+            ++summary.pages;
+        } else {
+            ++summary.duplicate_texts;
+        }
+        // Duplicate text may contain different hrefs, so discovery always continues.
         // Relative references belong to the final URL, not the redirect source.
         for (const auto& link : document.links()) {
             (void)frontier.add_link(parent, link);

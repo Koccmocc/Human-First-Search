@@ -44,6 +44,7 @@ class Handler(BaseHTTPRequestHandler):
             "/crawl/alias": (302, "/crawl/nested/page"),
             "/crawl/alias-two": (301, "/crawl/nested/page"),
             "/crawl/export-alias": (302, "/crawl/export"),
+            "/dedup/a-alias": (302, "/dedup/a"),
         }
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
@@ -61,6 +62,13 @@ class Handler(BaseHTTPRequestHandler):
             "/crawl/nested/child": b'<title>Child</title><p>Child body</p>',
             "/crawl/export": b'<title>Export &quot;title&quot; \\ caf\xc3\xa9</title>'
                              b'<p>First &quot;line&quot; \\ path</p><p>Second caf\xc3\xa9 &#1;</p>',
+            "/dedup/z": b'<title>First title</title><p>Same &amp; body</p><a href="from-z">Next</a>',
+            "/dedup/a": b'<title>Other title</title><div>Same &amp; <b>body</b></div><a href="from-a">Next</a>',
+            "/dedup/from-z": b'<title>Z child</title><p>Unique Z child</p>',
+            "/dedup/from-a": b'<title>A child</title><p>Unique A child</p>',
+            "/dedup/case": b'<p>Same &amp; Body</p><a href="from-a">Next</a>',
+            "/dedup/empty-one": b'<title>Empty one</title>',
+            "/dedup/empty-two": b'<title>Empty two</title>',
         }
         body = crawl_pages.get(self.path, body)
         if self.path in ("/crawl/error", "/crawl/plain", "/crawl/untyped", "/crawl/htmlish"):

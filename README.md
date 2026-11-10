@@ -3,8 +3,8 @@
 Local university proof of concept. The C++ crawler supports bounded traversal
 from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
 HTML validation. The CLI prints discovered page URLs and session statistics,
-and can export draft JSONL records. Main-article selection, language detection
-and text deduplication remain future steps.
+and can export draft JSONL records with session text deduplication. Main-article
+selection and language detection remain future steps.
 Development is independent of the team's Python/API/UI.
 
 ## Build and run
@@ -58,7 +58,7 @@ the entire command before any request occurs.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--max-pages N` | 1000 | Maximum delivered HTML records |
+| `--max-pages N` | 1000 | Maximum delivered HTML records with distinct text fingerprints |
 | `--max-targets N` | 5000 | Maximum popped queue entries, including failures |
 | `--max-depth N` | 3 | Maximum link depth; seeds have depth zero |
 | `--max-pending N` | 1000 | Pending queue capacity |
@@ -79,7 +79,7 @@ exist; destinations already present at the preflight check are rejected. Stderr
 contains a single session summary such as:
 
 ```text
-crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 duplicate_pages=0 rejected_seeds=0 pending_urls=0
+crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 duplicate_pages=0 duplicate_texts=0 rejected_seeds=0 pending_urls=0
 ```
 
 Exit `0` means the session completed normally, including a configured limit or
@@ -615,7 +615,8 @@ and redirect failures increment `fetch_failures` and processing continues withou
 automatic retries. Setup, allocation, parser and consumer exceptions propagate.
 
 `CrawlOptions` groups existing frontier, HTTP, robots and timing settings. Its
-positive `max_pages` (default 1000) bounds delivered HTML records; positive
+positive `max_pages` (default 1000) bounds delivered records with distinct text
+fingerprints; positive
 `max_targets` (default 5000) bounds popped queue entries, including failures and
 duplicates. This target budget does not count individual robots or redirect HTTP
 requests. Each chain retains its existing request limits. `max_redirects` defaults
@@ -624,23 +625,58 @@ remaining queue size and a stop reason: empty queue, page limit or target limit.
 An empty queue takes precedence when no work remains at a limit boundary.
 
 Relative links use the final response URL and retain the source's discovery depth
-before adding one for a link. A session emits each final URL once. Already emitted
-queued URLs are skipped before fetching; different redirect aliases can still
-cause a repeated download before their shared destination is known. This is URL
-deduplication; identical text at different final URLs is a later corpus concern.
+before adding one for a link. A session processes each validated final URL once.
+Already processed queued URLs are skipped before fetching, including destinations
+previously skipped as text duplicates. Different redirect aliases can still cause
+a repeated download before their shared destination is known. Text deduplication
+below determines which processed pages reach the consumer.
 Rejected discovery candidates retain the frontier's existing admission semantics.
 
 The input gate below validates UTF-8 before extraction. The extractor returns
-structural body text. Charset conversion, HTML `base`, main-article selection, language detection,
-Text deduplication, detailed crawl logs and a global duration limit remain
+structural body text. Charset conversion, HTML `base`, main-article selection,
+language detection, detailed crawl logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Ten GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Fifteen GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
-failure recovery, encoding rejection, page identities, seed rejection and consumer errors.
+failure recovery, encoding rejection, page identities, timestamps, text deduplication,
+seed rejection and consumer errors.
 No internet is needed.
+
+### Session text deduplication
+
+The crawl loop indexes the `text_hash` values already produced by `PageIdentity`.
+The first page with each SHA-256 fingerprint reaches the consumer and optional
+JSONL file; later pages with that fingerprint increment `duplicate_texts`. Only
+fingerprints are retained for this index, so the loop does not accumulate corpus
+texts. Each call to `crawl()` starts a fresh index.
+
+The representative is the first encountered page under the supplied seed order,
+FIFO processing and DOM link order. The choice is repeatable for the same ordered
+configuration and fetch outcomes. Changing seed order can select a different URL,
+title and metadata while preserving the group's `text_hash`. No additional text
+normalization is applied beyond extraction; changed case or Unicode bytes remain
+distinct. Empty extracted bodies also share one fingerprint; quality filtering is
+a separate step.
+
+Links from every newly processed valid HTML page are admitted through the usual
+frontier, including text duplicates. Different hrefs can exist behind identical
+visible anchor text. Their scope/depth/capacity checks and subsequent robots/HTTP
+policy remain in force. Already processed final URLs need no second discovery pass.
+
+`max_pages` counts delivered unique-text records, while `max_targets` counts every
+popped queue entry, including text duplicates. `duplicate_pages` retains its
+URL-repeat meaning; `duplicate_texts` counts newly processed final URLs whose text
+fingerprint was already seen. These counters are separate. The JSONL writer itself
+has no deduplication state and writes every record its caller supplies.
+
+Four added C++ scenarios cover duplicate-only link discovery, repeated final URLs,
+representative choice/session isolation, page/target budgets, changed text and
+empty bodies. The Python CLI reader verifies unique output fingerprints and
+continued discovery in the actual exported JSONL. Detailed URL-to-representative
+mapping remains part of the future crawl journal.
 
 ### HTML encoding input policy
 
@@ -721,4 +757,5 @@ million-byte message), independent Python `hashlib` reference values for UTF-8,
 binary data and a canonical URL, content changes, URL distinctions and equivalent
 extracted text from different markup. The local crawl test checks identities
 across redirect aliases and separate sessions. The CLI prints URLs and optionally
-exports JSONL records. Text-based duplicate removal remains a separate increment.
+exports JSONL records. The crawl loop uses these text fingerprints for session
+deduplication as described above.

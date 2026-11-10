@@ -111,6 +111,26 @@ class CliCrawl(unittest.TestCase):
             self.summary(self.run_crawl("--seed", BASE + "/private/page", "--output", str(empty)))
             self.assertEqual(empty.read_bytes(), b"")
 
+    def test_jsonl_deduplicates_text_and_keeps_discovery_from_duplicate_pages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "unique.jsonl"
+            result = self.run_crawl("--seed", BASE + "/dedup/z", "--seed", BASE + "/dedup/a-alias",
+                                    "--seed", BASE + "/dedup/a", "--output", str(path))
+            summary = self.summary(result)
+            records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            urls = [record["url"] for record in records]
+            self.assertEqual(urls, [BASE + path for path in ("/dedup/z", "/dedup/from-z", "/dedup/from-a")])
+            self.assertEqual(urls, result.stdout.splitlines())
+            self.assertEqual(records[0]["title"], "First title")
+            self.assertEqual(records[0]["text"], "Same & body\nNext")
+            self.assertEqual(len({record["text_hash"] for record in records}), 3)
+            for record in records:
+                self.assertEqual(record["text_hash"], "sha256:" + hashlib.sha256(record["text"].encode()).hexdigest())
+            self.assertEqual(summary["pages"], "3")
+            self.assertEqual(summary["targets"], "5")
+            self.assertEqual(summary["duplicate_texts"], "1")
+            self.assertEqual(summary["duplicate_pages"], "1")
+
     def test_existing_or_unavailable_output_fails_before_http_and_preserves_existing_data(self):
         with tempfile.TemporaryDirectory() as directory:
             existing = Path(directory) / "existing.jsonl"

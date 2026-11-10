@@ -107,6 +107,80 @@ TEST_F(Crawl, CapturesOneWallClockTimePerFinalResponseBeforeDelivery)
     EXPECT_EQ(*pages[0].fetched_at, first); // Stored instants do not follow later clock changes.
 }
 
+TEST_F(Crawl, SkipsDuplicateTextButDiscoversItsLinksAndRemembersItsFinalUrl)
+{
+    const auto summary = run({base + "/dedup/z", base + "/dedup/a-alias", base + "/dedup/a"});
+    ASSERT_EQ(pages.size(), 3U);
+    EXPECT_EQ(pages[0].url, base + "/dedup/z");
+    EXPECT_EQ(pages[0].title, "First title");
+    EXPECT_EQ(pages[0].text, "Same & body\nNext");
+    EXPECT_EQ(pages[1].url, base + "/dedup/from-z");
+    EXPECT_EQ(pages[2].url, base + "/dedup/from-a");
+    EXPECT_EQ(pages[2].depth, 1U);
+    EXPECT_EQ(summary.pages, 3U);
+    EXPECT_EQ(summary.targets_processed, 5U);
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(summary.duplicate_pages, 1U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+}
+
+TEST_F(Crawl, ChoosesTheFirstTextRepresentativeWithinEachIndependentSession)
+{
+    options.frontier.max_depth = 0;
+    (void)run({base + "/dedup/z", base + "/dedup/a"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].url, base + "/dedup/z");
+    const auto id = pages[0].page_id;
+    const auto hash = pages[0].text_hash;
+    pages.clear();
+    (void)run({base + "/dedup/z", base + "/dedup/a"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].page_id, id);
+    EXPECT_EQ(pages[0].text_hash, hash);
+    pages.clear();
+    (void)run({base + "/dedup/a", base + "/dedup/z"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].url, base + "/dedup/a");
+    EXPECT_NE(pages[0].page_id, id);
+    EXPECT_EQ(pages[0].text_hash, hash);
+}
+
+TEST_F(Crawl, CountsTextDuplicatesAgainstTargetsButNotTheUniquePageLimit)
+{
+    options.max_pages = 2;
+    auto summary = run({base + "/dedup/z", base + "/dedup/a"});
+    ASSERT_EQ(pages.size(), 2U);
+    EXPECT_EQ(pages[1].url, base + "/dedup/from-z");
+    EXPECT_EQ(summary.targets_processed, 3U);
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(summary.pending_urls, 1U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::page_limit);
+
+    pages.clear();
+    options.max_pages = 10;
+    options.max_targets = 2;
+    summary = run({base + "/dedup/z", base + "/dedup/a"});
+    EXPECT_EQ(pages.size(), 1U);
+    EXPECT_EQ(summary.targets_processed, 2U);
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(summary.pending_urls, 2U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::target_limit);
+}
+
+TEST_F(Crawl, KeepsDifferentTextAndDeduplicatesEmptyBodies)
+{
+    options.frontier.max_depth = 0;
+    auto summary = run({base + "/dedup/z", base + "/dedup/case"});
+    ASSERT_EQ(pages.size(), 2U);
+    EXPECT_NE(pages[0].text_hash, pages[1].text_hash);
+    EXPECT_EQ(summary.duplicate_texts, 0U);
+    pages.clear();
+    summary = run({base + "/dedup/empty-one", base + "/dedup/empty-two"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_TRUE(pages[0].text.empty());
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+}
+
 TEST_F(Crawl, LimitsPagesAndTargetsIndependently)
 {
     options.max_pages = 1;
@@ -172,11 +246,12 @@ TEST_F(Crawl, SkipsUnsupportedOrBrokenHtmlAndContinuesWithValidUtf8)
                               base + "/encoding/broken", base + "/encoding/ambiguous",
                               base + "/encoding/utf8", base + "/encoding/undeclared",
                               base + "/encoding/bom"});
-    ASSERT_EQ(pages.size(), 3U);
+    ASSERT_EQ(pages.size(), 2U);
     EXPECT_EQ(pages[0].title, "Caf\xC3\xA9");
-    EXPECT_EQ(pages[1].title, "Undeclared");
-    EXPECT_EQ(pages[2].title, "BOM");
-    EXPECT_EQ(pages[2].text, "Clean body");
+    // The undeclared page has the same body text as the first UTF-8 page.
+    EXPECT_EQ(pages[1].title, "BOM");
+    EXPECT_EQ(pages[1].text, "Clean body");
+    EXPECT_EQ(summary.duplicate_texts, 1U);
     EXPECT_EQ(summary.skipped_responses, 4U);
     EXPECT_EQ(summary.fetch_failures, 0U);
     EXPECT_EQ(summary.targets_processed, 7U);
