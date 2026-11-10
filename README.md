@@ -3,8 +3,9 @@
 Local university proof of concept. The C++ crawler supports bounded traversal
 from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
 HTML validation. The CLI prints discovered page URLs and session statistics,
-and can export draft JSONL records with session text deduplication. Main-article
-selection and language detection remain future steps.
+and can export draft JSONL records with semantic content selection and session
+text deduplication. Content-quality evaluation and language detection remain
+future steps.
 Development is independent of the team's Python/API/UI.
 
 ## Build and run
@@ -219,9 +220,44 @@ excluded subtrees, UTF-8 entities, result ownership, moves and deep nesting.
 
 This is structural body text, not article selection or browser-visible text:
 navigation, footers and hidden elements may remain. CSS is not evaluated and no
-JavaScript is executed. These limitations must be considered before corpus export.
-Article selection and local file input remain separate changes. Draft JSONL export
-preserves this structural body text, as documented above.
+JavaScript is executed. The crawler uses the semantic selection API below for
+corpus text; this low-level getter retains its original behavior.
+
+### Semantic content selection
+
+`HtmlDocument::main_text()` returns owning `HtmlText` with `text` and an
+`HtmlTextSource` value (`main`, `article` or `body`). It chooses the first nonempty
+HTML `main` in DOM order, then the first nonempty HTML `article`, then falls back
+to the body. Emptiness is checked after normalization and filtering. Candidates
+inside ignored subtrees are not considered.
+
+All three paths share the body's whitespace/entity handling, additionally skipping
+HTML `nav`, `aside`, `footer` and elements with a `hidden` attribute. Headers are
+retained because content headings/bylines often live inside them. Body fallback
+also applies these filters. `body_text()` remains available as the basic body
+extraction primitive with its original skip rules.
+
+The selector walks DOM links iteratively. Empty candidates' subtrees are not
+rescanned for the same tag, keeping deeply nested empty markup from causing
+repeated extraction passes. Only HTML-namespace elements qualify as `main` or
+`article`. Empty and moved-from documents return empty text with source `body`.
+
+The crawl loop hashes and deduplicates the selected text. JSONL labels the policy
+`semantic-text-v1` and records `text_source` so body fallback is visible. Changing
+selection rules can change `text_hash` while URL-based `page_id` stays stable.
+Link discovery still uses `links()` across the whole document, including outside
+the selected container and on pages skipped as text duplicates.
+
+This is an initial semantic-tag heuristic. It selects the first usable container
+without scoring article quality or size. CSS visibility, class-name heuristics,
+ARIA landmarks and JavaScript rendering are not evaluated. Unmarked boilerplate
+can remain, especially on body fallback, which also retains a site's header.
+Quality on real sites still needs evaluation.
+
+Six unit scenarios cover priorities, empty/hidden/inert/foreign candidates,
+filtered fallback, headings, deep nesting, moves and owning results. Local crawl
+and Python JSONL checks verify content-based hashes/deduplication while navigation
+links outside the chosen container still lead to new pages.
 
 ### Link candidates
 
@@ -632,16 +668,16 @@ a repeated download before their shared destination is known. Text deduplication
 below determines which processed pages reach the consumer.
 Rejected discovery candidates retain the frontier's existing admission semantics.
 
-The input gate below validates UTF-8 before extraction. The extractor returns
-structural body text. Charset conversion, HTML `base`, main-article selection,
+The input gate below validates UTF-8 before extraction. The extractor selects
+semantic content with filtered body fallback. Charset conversion, HTML `base`,
 language detection, detailed crawl logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Fifteen GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Sixteen GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
-failure recovery, encoding rejection, page identities, timestamps, text deduplication,
+failure recovery, encoding rejection, page identities, timestamps, semantic selection, text deduplication,
 seed rejection and consumer errors.
 No internet is needed.
 
@@ -727,7 +763,7 @@ each page, including pages reached through redirects.
 | Field | Input to SHA-256 | Effect of a change |
 | --- | --- | --- |
 | `page_id` | URL serialized by `resolve_http_url(final_url, "")` | Same canonical URL keeps its ID when content changes |
-| `text_hash` | Exact bytes of the extracted `body_text()` result | Changed extracted text changes its fingerprint; identical text at different URLs has the same fingerprint |
+| `text_hash` | Exact bytes of the selected `main_text().text` result | Changed extracted text changes its fingerprint; identical text at different URLs has the same fingerprint |
 
 Both strings contain `sha256:` followed by 64 lowercase hexadecimal digits.
 The page ID inherits the URL module's rules: fragments are removed, host/scheme
@@ -736,7 +772,7 @@ Redirect source URLs, titles, HTTP metadata, timestamps and session counters are
 not hash inputs. The ID belongs to the final page URL.
 
 Hashing adds no text normalization: whitespace/entity handling is already defined
-by `HtmlDocument::body_text()`. Unicode normalization such as NFC, case folding,
+by `HtmlDocument::main_text()`, using the shared body-text normalizer. Unicode normalization such as NFC, case folding,
 extra whitespace collapsing and locale-dependent transformations are not applied.
 The low-level identity helper hashes any byte string by its explicit length,
 including an empty string or embedded NUL; the crawl input gate still validates

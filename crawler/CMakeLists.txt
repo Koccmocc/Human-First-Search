@@ -74,7 +74,9 @@ if(BUILD_TESTING)
     add_test(NAME crawler.cli_crawl COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/http_fixture.py" "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_crawl_test.py" "$<TARGET_FILE:hfs-crawler>")
-    set_tests_properties(crawler.cli_crawl PROPERTIES TIMEOUT 20)
+    # This suite launches the CLI repeatedly; leave room for slower Windows startup.
+    set_tests_properties(crawler.cli_crawl PROPERTIES TIMEOUT 40
+        ENVIRONMENT "HFS_TEST_PROCESS_TIMEOUT=30")
 
     add_executable(crawl_test tests/crawl_test.cpp)
     target_link_libraries(crawl_test PRIVATE crawler_core GTest::gtest_main)

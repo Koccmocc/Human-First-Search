@@ -38,7 +38,8 @@ TEST(Jsonl, SerializesPageFieldsCapturedTimeAndUnknownLanguage)
     hfs::write_page_jsonl(output, page);
     const auto record = nlohmann::json::parse(output.str());
     EXPECT_EQ(record.at("schema_version"), 1);
-    EXPECT_EQ(record.at("extractor_version"), "body-text-v1");
+    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v1");
+    EXPECT_EQ(record.at("text_source"), "body");
     EXPECT_EQ(record.at("url_normalization_version"), "lexbor-url-v1");
     EXPECT_EQ(record.at("url"), page.url);
     EXPECT_EQ(record.at("page_id"), page.page_id);

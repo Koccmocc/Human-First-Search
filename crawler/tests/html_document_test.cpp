@@ -138,6 +138,86 @@ TEST(HtmlDocument, DeepNestingDoesNotRequireRecursiveTraversal)
     EXPECT_EQ(hfs::HtmlDocument{html}.body_text(), "Deep text");
 }
 
+TEST(HtmlDocument, MainTextPrefersMainAndKeepsContentHeadings)
+{
+    const hfs::HtmlDocument document{
+        "<header>Site header</header><article>Earlier article</article>"
+        "<main><header><h1>Heading</h1></header><p>Main <b>content</b></p>"
+        "<nav>Menu</nav><aside>Advert</aside><footer>Related</footer>"
+        "<p hidden>Hidden text</p><p>Tail</p></main><main>Later main</main>"};
+    const auto selected = document.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::main);
+    EXPECT_EQ(selected.text, "Heading\nMain content\nTail");
+    EXPECT_NE(document.body_text().find("Site header"), std::string::npos);
+    EXPECT_NE(document.body_text().find("Advert"), std::string::npos);
+}
+
+TEST(HtmlDocument, MainTextFallsBackToFirstNonemptyArticle)
+{
+    const hfs::HtmlDocument document{
+        "<main><nav>Menu only</nav></main><article hidden>Hidden article</article>"
+        "<article> &nbsp;<script>ignored()</script></article>"
+        "<article><h1>Article heading</h1><p>Caf&#233; &amp; tea</p>"
+        "<header>Byline</header></article><article>Later article</article>"};
+    const auto selected = document.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::article);
+    EXPECT_EQ(selected.text, "Article heading\nCaf\xC3\xA9 & tea\nByline");
+}
+
+TEST(HtmlDocument, MainTextUsesFilteredBodyWhenNoUsableContainerExists)
+{
+    const hfs::HtmlDocument document{
+        "<header>Site header</header><nav><main>Fake main</main></nav>"
+        "<aside><article>Fake article</article></aside>"
+        "<main> &nbsp; </main><article><script>ignored()</script></article>"
+        "<section><h1>Heading</h1><p>Body &amp; text</p></section>"
+        "<footer>Footer</footer><div hidden><main>Hidden main</main></div>"};
+    const auto selected = document.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::body);
+    EXPECT_EQ(selected.text, "Site header\nHeading\nBody & text");
+}
+
+TEST(HtmlDocument, MainTextIgnoresInertAndForeignCandidates)
+{
+    const hfs::HtmlDocument document{
+        "<template><main>Inert main</main></template><!-- <main>Comment</main> -->"
+        "<svg><main>Foreign main</main><article>Foreign article</article></svg>"
+        "<article>Real &amp; content</article>"};
+    const auto selected = document.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::article);
+    EXPECT_EQ(selected.text, "Real & content");
+}
+
+TEST(HtmlDocument, MainTextSupportsDeepNonemptyAndEmptyCandidatesIteratively)
+{
+    std::string opening;
+    std::string closing;
+    for (int depth = 0; depth < 2000; ++depth) {
+        opening += "<main>";
+        closing += "</main>";
+    }
+    const auto nonempty = hfs::HtmlDocument{opening + "Deep text" + closing}.main_text();
+    EXPECT_EQ(nonempty.source, hfs::HtmlTextSource::main);
+    EXPECT_EQ(nonempty.text, "Deep text");
+    const auto empty = hfs::HtmlDocument{opening + closing + "<article>Fallback article</article>"}.main_text();
+    EXPECT_EQ(empty.source, hfs::HtmlTextSource::article);
+    EXPECT_EQ(empty.text, "Fallback article");
+}
+
+TEST(HtmlDocument, MainTextOwnsItsResultAndHandlesMovesAndEmptyDocuments)
+{
+    std::string saved;
+    {
+        hfs::HtmlDocument source{"<main><p>Saved text</p></main>"};
+        auto target = std::move(source);
+        EXPECT_TRUE(source.main_text().text.empty());
+        saved = target.main_text().text;
+    }
+    EXPECT_EQ(saved, "Saved text");
+    EXPECT_TRUE(hfs::HtmlDocument{std::string_view{}}.main_text().text.empty());
+    EXPECT_TRUE(hfs::HtmlDocument{"<body hidden><main>Hidden body</main>"}.main_text().text.empty());
+}
+
 TEST(HtmlDocument, LinksPreserveDocumentOrderAndDuplicates)
 {
     const hfs::HtmlDocument document{

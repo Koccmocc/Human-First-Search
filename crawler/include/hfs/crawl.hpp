@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hfs/page_fetcher.hpp"
+#include "hfs/html_document.hpp"
 #include "hfs/url_frontier.hpp"
 
 #include <cstddef>
@@ -40,6 +41,7 @@ struct CrawledPage {
     std::string text_hash;
     // Observed after the final response returns, before validation/extraction.
     std::optional<std::chrono::system_clock::time_point> fetched_at;
+    HtmlTextSource text_source{HtmlTextSource::body};
 };
 
 enum class CrawlStop { queue_empty, page_limit, target_limit };

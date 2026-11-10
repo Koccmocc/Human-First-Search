@@ -181,6 +181,24 @@ TEST_F(Crawl, KeepsDifferentTextAndDeduplicatesEmptyBodies)
     EXPECT_EQ(summary.duplicate_texts, 1U);
 }
 
+TEST_F(Crawl, HashesSelectedContentAndDiscoversLinksOutsideItsContainer)
+{
+    const auto summary = run({base + "/content/page", base + "/content/copy"});
+    ASSERT_EQ(pages.size(), 3U);
+    EXPECT_EQ(pages[0].url, base + "/content/page");
+    EXPECT_EQ(pages[0].text_source, hfs::HtmlTextSource::article);
+    EXPECT_EQ(pages[0].text, "Heading\nCaf\xC3\xA9 & tea");
+    const auto expected = hfs::make_page_identity(pages[0].url, pages[0].text);
+    ASSERT_TRUE(expected);
+    EXPECT_EQ(pages[0].text_hash, expected->text_hash);
+    EXPECT_EQ(pages[1].url, base + "/content/outside");
+    EXPECT_EQ(pages[1].text_source, hfs::HtmlTextSource::main);
+    EXPECT_EQ(pages[2].url, base + "/content/copy-child");
+    EXPECT_EQ(pages[2].text_source, hfs::HtmlTextSource::body);
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(summary.targets_processed, 4U);
+}
+
 TEST_F(Crawl, LimitsPagesAndTargetsIndependently)
 {
     options.max_pages = 1;

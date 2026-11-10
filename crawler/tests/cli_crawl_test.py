@@ -79,7 +79,8 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["title"], 'Export "title" \\ caf\u00e9')
             self.assertEqual(record["text"], expected_text)
             self.assertEqual(record["schema_version"], 1)
-            self.assertEqual(record["extractor_version"], "body-text-v1")
+            self.assertEqual(record["extractor_version"], "semantic-text-v1")
+            self.assertEqual(record["text_source"], "body")
             self.assertEqual(record["url_normalization_version"], "lexbor-url-v1")
             self.assertEqual(record["requested_urls"], [BASE + "/crawl/export-alias", record["url"]])
             self.assertEqual(record["page_id"], "sha256:" + hashlib.sha256(record["url"].encode()).hexdigest())
@@ -130,6 +131,23 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(summary["targets"], "5")
             self.assertEqual(summary["duplicate_texts"], "1")
             self.assertEqual(summary["duplicate_pages"], "1")
+
+    def test_jsonl_uses_selected_content_for_hashes_and_preserves_external_discovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "semantic.jsonl"
+            result = self.run_crawl("--seed", BASE + "/content/page", "--seed", BASE + "/content/copy",
+                                    "--output", str(path))
+            summary = self.summary(result)
+            records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([record["url"] for record in records],
+                             [BASE + path for path in ("/content/page", "/content/outside", "/content/copy-child")])
+            expected_text = "Heading\nCaf\u00e9 & tea"
+            self.assertEqual(records[0]["text"], expected_text)
+            self.assertEqual(records[0]["extractor_version"], "semantic-text-v1")
+            self.assertEqual([record["text_source"] for record in records], ["article", "main", "body"])
+            self.assertEqual(records[0]["text_hash"], "sha256:" + hashlib.sha256(expected_text.encode()).hexdigest())
+            self.assertEqual(records[0]["page_id"], "sha256:" + hashlib.sha256(records[0]["url"].encode()).hexdigest())
+            self.assertEqual(summary["duplicate_texts"], "1")
 
     def test_existing_or_unavailable_output_fails_before_http_and_preserves_existing_data(self):
         with tempfile.TemporaryDirectory() as directory:

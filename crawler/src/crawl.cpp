@@ -70,17 +70,17 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const HtmlDocument document{html};
         const CrawlTarget parent{fetched->final_url, target->depth};
-        auto text = document.body_text();
-        const auto identity = make_page_identity(fetched->final_url, text);
+        auto extracted = document.main_text();
+        const auto identity = make_page_identity(fetched->final_url, extracted.text);
         if (!identity) {
             throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
         }
         if (seen_text_hashes.insert(identity->text_hash).second) {
             // FIFO chooses the first representative; only unique text uses the page budget.
-            const CrawledPage page{fetched->final_url, document.title(), std::move(text),
+            const CrawledPage page{fetched->final_url, document.title(), std::move(extracted.text),
                                    target->depth, response.status, response.content_type,
                                    std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
-                                   fetched_at};
+                                   fetched_at, extracted.source};
             consume(page);
             ++summary.pages;
         } else {

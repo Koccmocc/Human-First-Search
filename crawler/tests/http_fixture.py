@@ -69,6 +69,15 @@ class Handler(BaseHTTPRequestHandler):
             "/dedup/case": b'<p>Same &amp; Body</p><a href="from-a">Next</a>',
             "/dedup/empty-one": b'<title>Empty one</title>',
             "/dedup/empty-two": b'<title>Empty two</title>',
+            "/content/page": b'<title>Semantic page</title><header>Site header</header>'
+                             b'<nav><a href="/content/outside">Outside</a></nav>'
+                             b'<article><header><h1>Heading</h1></header><p>Caf\xc3\xa9 &amp; tea</p>'
+                             b'<aside>Advert</aside><footer>Related</footer><p hidden>Hidden</p></article>'
+                             b'<footer>Site footer</footer>',
+            "/content/copy": b'<title>Copy title</title><nav><a href="/content/copy-child">Copy menu</a></nav>'
+                             b'<article><h1>Heading</h1><p>Caf\xc3\xa9 &amp; tea</p></article>',
+            "/content/outside": b'<main><p>Other page</p></main>',
+            "/content/copy-child": b'<p>Copy child</p>',
         }
         body = crawl_pages.get(self.path, body)
         if self.path in ("/crawl/error", "/crawl/plain", "/crawl/untyped", "/crawl/htmlish"):
@@ -141,7 +150,8 @@ with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
     thread.start()
     try:
         env = dict(os.environ, HFS_TEST_BASE_URL=f"http://127.0.0.1:{server.server_port}")
-        result = subprocess.run(sys.argv[1:], env=env, timeout=15)
+        process_timeout = float(os.environ.get("HFS_TEST_PROCESS_TIMEOUT", "15"))
+        result = subprocess.run(sys.argv[1:], env=env, timeout=process_timeout)
         if server.followed:
             raise RuntimeError("Client followed a redirect despite the single-request policy")
         if server.blocked_page_requested:

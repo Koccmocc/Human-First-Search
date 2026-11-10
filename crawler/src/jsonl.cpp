@@ -11,6 +11,16 @@
 
 namespace {
 
+auto source_name(hfs::HtmlTextSource source) -> std::string_view
+{
+    switch (source) {
+    case hfs::HtmlTextSource::main: return "main";
+    case hfs::HtmlTextSource::article: return "article";
+    case hfs::HtmlTextSource::body: return "body";
+    }
+    throw std::invalid_argument{"Unknown HTML text source"};
+}
+
 auto utc_timestamp(std::chrono::system_clock::time_point time) -> std::string
 {
     using namespace std::chrono;
@@ -43,12 +53,13 @@ void write_page_jsonl(std::ostream& output, const CrawledPage& page)
 {
     const nlohmann::json record{
         {"schema_version", 1},
-        {"extractor_version", "body-text-v1"},
+        {"extractor_version", html_extractor_version},
         {"url_normalization_version", "lexbor-url-v1"},
         {"page_id", page.page_id},
         {"url", page.url},
         {"title", page.title},
         {"text", page.text},
+        {"text_source", source_name(page.text_source)},
         // Language detection is still pending; a manually supplied page may lack time.
         {"language", nullptr},
         {"fetched_at", page.fetched_at ? nlohmann::json(utc_timestamp(*page.fetched_at))

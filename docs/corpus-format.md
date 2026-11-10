@@ -10,12 +10,13 @@ serialization. This contract is provisional until team integration.
 | Field | Current meaning |
 | --- | --- |
 | `schema_version` | Integer `1` |
-| `extractor_version` | `body-text-v1`: current `HtmlDocument::body_text()` rules |
+| `extractor_version` | `semantic-text-v1`: current `HtmlDocument::main_text()` rules |
 | `url_normalization_version` | `lexbor-url-v1`: current HTTP(S) URL resolution/serialization rules |
 | `page_id` | `sha256:` plus the SHA-256 of the canonical final URL |
 | `url` | Canonical final HTTP(S) URL, without fragment |
 | `title` | Extracted title; may be empty |
-| `text` | Extracted structural body text; may be empty |
+| `text` | Selected semantic content or filtered body fallback; may be empty |
+| `text_source` | Selected container: `main`, `article` or `body` |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
 | `language` | `null`: language detection has not been implemented |
 | `fetched_at` | Captured UTC completion time as `YYYY-MM-DDTHH:MM:SSZ`; `null` if no time was captured |
@@ -29,6 +30,19 @@ Neither title, timestamps nor other metadata affects them. Text normalization
 belongs to extraction; hashing and serialization do not additionally normalize
 Unicode or whitespace. Bump the corresponding version tag when extraction or
 URL normalization rules change.
+
+`semantic-text-v1` chooses the first nonempty HTML `main`, otherwise the first
+nonempty HTML `article`, otherwise body fallback. It skips script/style/template,
+nav/aside/footer and `hidden` subtrees; normalization retains the original body
+whitespace/entity rules. Content headers are retained. Container emptiness is
+checked after filtering. Only HTML-namespace containers qualify.
+
+`text_source` exposes the chosen branch. The source `body` still applies the
+semantic skip rules and can retain unmarked site chrome. This is a tag-based
+heuristic without CSS, ARIA-role handling or content-quality scoring. Earlier
+exports used `body-text-v1` and had no `text_source`. New selection can change
+`text_hash` for the same URL, while `page_id` remains URL-based. All-document link
+discovery is independent of the selected text region.
 
 `language` is unknown until language detection is implemented. Each delivered
 page's `fetched_at` is observed with `system_clock` immediately after the fetcher
@@ -56,10 +70,10 @@ links to the frontier, subject to the existing crawl limits and access policy.
 The index retains SHA-256 fingerprints, not copies of corpus texts. The standalone
 JSONL writer has no deduplication state and writes each supplied record.
 
-Structural body text can still contain navigation/footer content. Empty bodies
-are not yet filtered and form one text-fingerprint group.
-This export is an intermediate data format before article selection, language
-filtering and the final reproducibility manifest are complete. Detailed mapping
+Unmarked boilerplate may remain in selected text. Empty results are not yet
+filtered and form one text-fingerprint group. This export is an intermediate
+data format before content-quality evaluation, language filtering and the final
+reproducibility manifest are complete. Detailed mapping
 from skipped URLs to their representatives belongs to the future crawl journal.
 
 `write_page_jsonl(output, page)` accepts a page produced by the crawl loop. It

@@ -5,7 +5,9 @@
 #include <lexbor/dom/interfaces/element.h>
 
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
+#include <utility>
 
 namespace hfs {
 
@@ -64,6 +66,96 @@ private:
     char separator_{};
 };
 
+auto skip_text(lxb_dom_node_t* node, bool semantic) -> bool
+{
+    if (node->type != LXB_DOM_NODE_TYPE_ELEMENT) {
+        return false;
+    }
+    if (node->local_name == LXB_TAG_SCRIPT || node->local_name == LXB_TAG_STYLE ||
+        node->local_name == LXB_TAG_TEMPLATE) {
+        return true;
+    }
+    if (!semantic || node->ns != LXB_NS_HTML) {
+        return false;
+    }
+    return node->local_name == LXB_TAG_NAV || node->local_name == LXB_TAG_ASIDE ||
+           node->local_name == LXB_TAG_FOOTER ||
+           lxb_dom_element_has_attribute(lxb_dom_interface_element(node),
+               reinterpret_cast<const lxb_char_t*>("hidden"), 6);
+}
+
+auto extract_text(lxb_dom_node_t* root, bool semantic) -> std::string
+{
+    if (root == nullptr || skip_text(root, semantic)) {
+        return {};
+    }
+    BodyText output;
+    auto* node = root->first_child;
+    // Walk parent/sibling links instead of recursing on untrusted HTML depth.
+    while (node != nullptr) {
+        const bool element = node->type == LXB_DOM_NODE_TYPE_ELEMENT;
+        const bool skip = skip_text(node, semantic);
+        if (element && is_block(node->local_name)) {
+            output.boundary();
+        }
+        if (node->type == LXB_DOM_NODE_TYPE_TEXT) {
+            const auto& data = lxb_dom_interface_character_data(node)->data;
+            if (data.length != 0) {
+                output.append({reinterpret_cast<const char*>(data.data), data.length});
+            }
+        }
+        if (!skip && node->first_child != nullptr) {
+            node = node->first_child;
+            continue;
+        }
+        while (node->next == nullptr) {
+            node = node->parent;
+            if (node == root) {
+                return output.value;
+            }
+            if (node->type == LXB_DOM_NODE_TYPE_ELEMENT && is_block(node->local_name)) {
+                output.boundary();
+            }
+        }
+        if (node->type == LXB_DOM_NODE_TYPE_ELEMENT && is_block(node->local_name)) {
+            output.boundary();
+        }
+        node = node->next;
+    }
+    return output.value;
+}
+
+auto select_text(lxb_dom_node_t* root, std::uintptr_t tag, HtmlTextSource source)
+    -> std::optional<HtmlText>
+{
+    auto* node = root->first_child;
+    while (node != nullptr) {
+        bool descend = !skip_text(node, true);
+        if (descend && node->type == LXB_DOM_NODE_TYPE_ELEMENT &&
+            node->ns == LXB_NS_HTML && node->local_name == tag) {
+            auto text = extract_text(node, true);
+            if (!text.empty()) {
+                return HtmlText{std::move(text), source};
+            }
+            // An empty candidate's descendants cannot yield text under these same
+            // filters. Skip them to avoid rescanning deeply nested empty candidates.
+            descend = false;
+        }
+        if (descend && node->first_child != nullptr) {
+            node = node->first_child;
+            continue;
+        }
+        while (node->next == nullptr) {
+            node = node->parent;
+            if (node == root) {
+                return std::nullopt;
+            }
+        }
+        node = node->next;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 struct HtmlDocument::Impl {
@@ -114,46 +206,25 @@ auto HtmlDocument::body_text() const -> std::string
         return {};
     }
     auto* body = lxb_html_document_body_element(impl_->document.get());
-    if (body == nullptr) {
+    return extract_text(lxb_dom_interface_node(body), false);
+}
+
+auto HtmlDocument::main_text() const -> HtmlText
+{
+    if (!impl_) {
         return {};
     }
-
-    BodyText output;
-    auto* root = lxb_dom_interface_node(body);
-    auto* node = root->first_child;
-    // Walk parent/sibling links instead of recursing on untrusted HTML depth.
-    while (node != nullptr) {
-        const bool element = node->type == LXB_DOM_NODE_TYPE_ELEMENT;
-        const bool skip = element && (node->local_name == LXB_TAG_SCRIPT ||
-            node->local_name == LXB_TAG_STYLE || node->local_name == LXB_TAG_TEMPLATE);
-        if (element && is_block(node->local_name)) {
-            output.boundary();
-        }
-        if (node->type == LXB_DOM_NODE_TYPE_TEXT) {
-            const auto& data = lxb_dom_interface_character_data(node)->data;
-            if (data.length != 0) {
-                output.append({reinterpret_cast<const char*>(data.data), data.length});
-            }
-        }
-        if (!skip && node->first_child != nullptr) {
-            node = node->first_child;
-            continue;
-        }
-        while (node->next == nullptr) {
-            node = node->parent;
-            if (node == root) {
-                return output.value;
-            }
-            if (node->type == LXB_DOM_NODE_TYPE_ELEMENT && is_block(node->local_name)) {
-                output.boundary();
-            }
-        }
-        if (node->type == LXB_DOM_NODE_TYPE_ELEMENT && is_block(node->local_name)) {
-            output.boundary();
-        }
-        node = node->next;
+    auto* body = lxb_dom_interface_node(lxb_html_document_body_element(impl_->document.get()));
+    if (body == nullptr || skip_text(body, true)) {
+        return {};
     }
-    return output.value;
+    if (auto selected = select_text(body, LXB_TAG_MAIN, HtmlTextSource::main)) {
+        return std::move(*selected);
+    }
+    if (auto selected = select_text(body, LXB_TAG_ARTICLE, HtmlTextSource::article)) {
+        return std::move(*selected);
+    }
+    return HtmlText{extract_text(body, true), HtmlTextSource::body};
 }
 
 auto HtmlDocument::links() const -> std::vector<std::string>

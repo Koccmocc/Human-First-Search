@@ -7,6 +7,15 @@
 
 namespace hfs {
 
+inline constexpr std::string_view html_extractor_version{"semantic-text-v1"};
+
+enum class HtmlTextSource { main, article, body };
+
+struct HtmlText {
+    std::string text;
+    HtmlTextSource source{HtmlTextSource::body};
+};
+
 // Owns a parsed DOM. The input must be UTF-8 and is borrowed only during parsing.
 class HtmlDocument {
 public:
@@ -26,6 +35,11 @@ public:
     // Extracts body text, not main-article text or CSS-computed visible text.
     // Block boundaries become newlines; inline markup adds no extra spaces.
     [[nodiscard]] auto body_text() const -> std::string;
+
+    // First nonempty HTML main, then article, otherwise body. Ignores nav/aside/
+    // footer and hidden subtrees in addition to script/style/template. This is a
+    // semantic-container heuristic, without CSS evaluation or content scoring.
+    [[nodiscard]] auto main_text() const -> HtmlText;
 
     // Returns decoded href values from HTML a/area elements in document order.
     // Keeps empty values and duplicates; URL resolution/filtering belongs elsewhere.
