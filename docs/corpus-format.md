@@ -15,7 +15,7 @@ serialization. This contract is provisional until team integration.
 | `page_id` | `sha256:` plus the SHA-256 of the canonical final URL |
 | `url` | Canonical final HTTP(S) URL, without fragment |
 | `title` | Extracted title; may be empty |
-| `text` | Selected semantic content or filtered body fallback; may be empty |
+| `text` | Selected semantic content or filtered body fallback; nonempty for crawl output |
 | `text_source` | Selected container: `main`, `article` or `body` |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
 | `language` | `null`: language detection has not been implemented |
@@ -70,11 +70,21 @@ links to the frontier, subject to the existing crawl limits and access policy.
 The index retains SHA-256 fingerprints, not copies of corpus texts. The standalone
 JSONL writer has no deduplication state and writes each supplied record.
 
-Unmarked boilerplate may remain in selected text. Empty results are not yet
-filtered and form one text-fingerprint group. This export is an intermediate
-data format before content-quality evaluation, language filtering and the final
-reproducibility manifest are complete. Detailed mapping
-from skipped URLs to their representatives belongs to the future crawl journal.
+The crawl loop rejects empty extracted texts before hashing or delivery. Emptiness
+is checked after semantic filtering and whitespace normalization; a title alone
+does not qualify. Each newly processed final URL rejected this way increments
+`empty_texts`, independently of response skips and text duplicates. Its links
+still enter the frontier under normal policy and limits. Empty pages use the
+target budget but not the delivered-page budget. An all-empty session creates
+an empty JSONL file and completes normally.
+
+This admission check does not change `semantic-text-v1` extraction or the schema.
+The standalone serializer can still write an empty text supplied by its caller;
+earlier crawl exports may contain one empty-text representative. Short nonempty
+texts remain eligible, and unmarked boilerplate may remain in selected text.
+This export is an intermediate data format before content-quality evaluation,
+language filtering and the final reproducibility manifest are complete. Detailed
+mapping from skipped URLs to their representatives belongs to the future crawl journal.
 
 `write_page_jsonl(output, page)` accepts a page produced by the crawl loop. It
 preserves the supplied fields and does not recompute IDs, validate their semantic

@@ -149,6 +149,30 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(records[0]["page_id"], "sha256:" + hashlib.sha256(records[0]["url"].encode()).hexdigest())
             self.assertEqual(summary["duplicate_texts"], "1")
 
+    def test_empty_text_is_excluded_from_jsonl_but_still_supplies_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "nonempty.jsonl"
+            result = self.run_crawl("--seed", BASE + "/content/empty", "--max-pages", "1",
+                                    "--output", str(path))
+            summary = self.summary(result)
+            records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([record["url"] for record in records], [BASE + "/content/outside"])
+            self.assertEqual(result.stdout.splitlines(), [BASE + "/content/outside"])
+            self.assertEqual(records[0]["text"], "Other page")
+            self.assertEqual(summary["pages"], "1")
+            self.assertEqual(summary["targets"], "2")
+            self.assertEqual(summary["empty_texts"], "1")
+            self.assertEqual(summary["duplicate_texts"], "0")
+
+            empty = Path(directory) / "all-empty.jsonl"
+            summary = self.summary(self.run_crawl("--seed", BASE + "/dedup/empty-one",
+                                                 "--seed", BASE + "/dedup/empty-two",
+                                                 "--output", str(empty)))
+            self.assertEqual(empty.read_bytes(), b"")
+            self.assertEqual(summary["pages"], "0")
+            self.assertEqual(summary["empty_texts"], "2")
+            self.assertEqual(summary["duplicate_texts"], "0")
+
     def test_existing_or_unavailable_output_fails_before_http_and_preserves_existing_data(self):
         with tempfile.TemporaryDirectory() as directory:
             existing = Path(directory) / "existing.jsonl"

@@ -167,7 +167,7 @@ TEST_F(Crawl, CountsTextDuplicatesAgainstTargetsButNotTheUniquePageLimit)
     EXPECT_EQ(summary.stop, hfs::CrawlStop::target_limit);
 }
 
-TEST_F(Crawl, KeepsDifferentTextAndDeduplicatesEmptyBodies)
+TEST_F(Crawl, KeepsDifferentTextAndRejectsEachEmptyBody)
 {
     options.frontier.max_depth = 0;
     auto summary = run({base + "/dedup/z", base + "/dedup/case"});
@@ -176,9 +176,49 @@ TEST_F(Crawl, KeepsDifferentTextAndDeduplicatesEmptyBodies)
     EXPECT_EQ(summary.duplicate_texts, 0U);
     pages.clear();
     summary = run({base + "/dedup/empty-one", base + "/dedup/empty-two"});
+    EXPECT_TRUE(pages.empty());
+    EXPECT_EQ(summary.pages, 0U);
+    EXPECT_EQ(summary.empty_texts, 2U);
+    EXPECT_EQ(summary.duplicate_texts, 0U);
+    EXPECT_EQ(summary.skipped_responses, 0U);
+    EXPECT_EQ(summary.targets_processed, 2U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+}
+
+TEST_F(Crawl, DiscoversLinksFromEmptyTextWithoutUsingThePageBudget)
+{
+    options.max_pages = 1;
+    const auto summary = run({base + "/content/empty"});
     ASSERT_EQ(pages.size(), 1U);
-    EXPECT_TRUE(pages[0].text.empty());
-    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(pages[0].url, base + "/content/outside");
+    EXPECT_EQ(pages[0].text, "Other page");
+    EXPECT_EQ(pages[0].depth, 1U);
+    EXPECT_EQ(summary.pages, 1U);
+    EXPECT_EQ(summary.targets_processed, 2U);
+    EXPECT_EQ(summary.empty_texts, 1U);
+    EXPECT_EQ(summary.duplicate_texts, 0U);
+    EXPECT_EQ(summary.pending_urls, 0U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+}
+
+TEST_F(Crawl, EmptyTextStillUsesTheTargetBudgetAndDiscoveryDepthLimit)
+{
+    options.max_targets = 1;
+    auto summary = run({base + "/content/empty"});
+    EXPECT_TRUE(pages.empty());
+    EXPECT_EQ(summary.pages, 0U);
+    EXPECT_EQ(summary.empty_texts, 1U);
+    EXPECT_EQ(summary.targets_processed, 1U);
+    EXPECT_EQ(summary.pending_urls, 1U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::target_limit);
+
+    options.max_targets = 10;
+    options.frontier.max_depth = 0;
+    summary = run({base + "/content/empty"});
+    EXPECT_TRUE(pages.empty());
+    EXPECT_EQ(summary.empty_texts, 1U);
+    EXPECT_EQ(summary.pending_urls, 0U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
 }
 
 TEST_F(Crawl, HashesSelectedContentAndDiscoversLinksOutsideItsContainer)

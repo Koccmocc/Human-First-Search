@@ -80,7 +80,7 @@ exist; destinations already present at the preflight check are rejected. Stderr
 contains a single session summary such as:
 
 ```text
-crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 duplicate_pages=0 duplicate_texts=0 rejected_seeds=0 pending_urls=0
+crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 rejected_seeds=0 pending_urls=0
 ```
 
 Exit `0` means the session completed normally, including a configured limit or
@@ -651,7 +651,7 @@ and redirect failures increment `fetch_failures` and processing continues withou
 automatic retries. Setup, allocation, parser and consumer exceptions propagate.
 
 `CrawlOptions` groups existing frontier, HTTP, robots and timing settings. Its
-positive `max_pages` (default 1000) bounds delivered records with distinct text
+positive `max_pages` (default 1000) bounds delivered records with nonempty, distinct text
 fingerprints; positive
 `max_targets` (default 5000) bounds popped queue entries, including failures and
 duplicates. This target budget does not count individual robots or redirect HTTP
@@ -674,12 +674,33 @@ language detection, detailed crawl logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Sixteen GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Eighteen GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
-failure recovery, encoding rejection, page identities, timestamps, semantic selection, text deduplication,
+failure recovery, encoding rejection, page identities, timestamps, semantic selection,
+empty-text filtering, text deduplication,
 seed rejection and consumer errors.
 No internet is needed.
+
+### Empty-text filtering
+
+After `main_text()` has filtered and normalized the HTML, the crawl loop rejects
+an empty `text` before hashing or calling the consumer. A title alone does not
+qualify as body content; whitespace-only and ignored-subtree-only pages are also
+empty. These pages increment `CrawlSummary::empty_texts`, printed as `empty_texts`
+in the CLI summary. They do not increment `pages`, `duplicate_texts` or
+`skipped_responses`. The latter remains reserved for rejected statuses and inputs.
+
+Empty-text pages still supply links from the whole document. Normal host scope,
+robots, depth and queue limits apply, and each popped target still uses
+`max_targets`. Their final URLs remain processed, preventing repeat extraction.
+They do not use `max_pages`, so a navigation-only seed can lead to useful content.
+An all-empty session completes normally and leaves an empty JSONL output.
+
+This is only an emptiness check: short nonempty texts remain eligible. Extraction
+rules and their version are unchanged. Language and broader quality filtering
+remain separate work. HTTP and CLI tests cover normalized whitespace, filtered
+chrome, continued discovery, independent budgets and an all-empty export.
 
 ### Session text deduplication
 
@@ -694,8 +715,7 @@ FIFO processing and DOM link order. The choice is repeatable for the same ordere
 configuration and fetch outcomes. Changing seed order can select a different URL,
 title and metadata while preserving the group's `text_hash`. No additional text
 normalization is applied beyond extraction; changed case or Unicode bytes remain
-distinct. Empty extracted bodies also share one fingerprint; quality filtering is
-a separate step.
+distinct. Empty extracted texts are rejected before this index is consulted.
 
 Links from every newly processed valid HTML page are admitted through the usual
 frontier, including text duplicates. Different hrefs can exist behind identical
@@ -710,7 +730,7 @@ has no deduplication state and writes every record its caller supplies.
 
 Four added C++ scenarios cover duplicate-only link discovery, repeated final URLs,
 representative choice/session isolation, page/target budgets, changed text and
-empty bodies. The Python CLI reader verifies unique output fingerprints and
+empty-body rejection. The Python CLI reader verifies unique output fingerprints and
 continued discovery in the actual exported JSONL. Detailed URL-to-representative
 mapping remains part of the future crawl journal.
 

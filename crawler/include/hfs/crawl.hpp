@@ -21,7 +21,7 @@ struct CrawlOptions {
     HttpOptions http;
     RobotsCacheOptions robots;
     HostDelayOptions timing;
-    std::size_t max_pages{1000}; // Records with distinct extracted-text SHA-256 values.
+    std::size_t max_pages{1000}; // Records with nonempty, distinct extracted-text SHA-256 values.
     std::size_t max_targets{5000};
     std::size_t max_redirects{5};
     // Used only for fetch metadata; request spacing keeps its separate steady clock.
@@ -52,6 +52,7 @@ struct CrawlSummary {
     std::size_t pages{};
     std::size_t fetch_failures{};
     std::size_t skipped_responses{};
+    std::size_t empty_texts{};
     std::size_t duplicate_pages{};
     std::size_t duplicate_texts{};
     std::size_t rejected_seeds{};
@@ -63,7 +64,8 @@ using PageConsumer = std::function<void(const CrawledPage&)>;
 
 // One synchronous session. Supply canonical host names. Only validated UTF-8 HTML
 // reaches extraction; rejected metadata/encodings count as skipped_responses.
-// Delivers the first page for each extracted-text SHA-256; duplicates still supply links.
+// Delivers the first page for each nonempty extracted-text SHA-256.
+// Empty texts count as empty_texts; empty texts and duplicates still supply links.
 // Setup, clock, allocation, parser and consumer exceptions abort the session and propagate.
 [[nodiscard]] auto crawl(std::span<const std::string> seeds,
                          std::vector<std::string> allowed_hosts,

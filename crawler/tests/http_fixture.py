@@ -68,7 +68,12 @@ class Handler(BaseHTTPRequestHandler):
             "/dedup/from-a": b'<title>A child</title><p>Unique A child</p>',
             "/dedup/case": b'<p>Same &amp; Body</p><a href="from-a">Next</a>',
             "/dedup/empty-one": b'<title>Empty one</title>',
-            "/dedup/empty-two": b'<title>Empty two</title>',
+            "/dedup/empty-two": b'<title>Empty two</title><body> \t\n&nbsp;<p> &#160; </p>',
+            "/content/empty": b'<title>Navigation only</title><main> \t&nbsp; </main>'
+                              b'<nav><a href="/content/outside">Useful child</a></nav>'
+                              b'<aside>Advert</aside><footer>Footer</footer><p hidden>Hidden</p>'
+                              b'<script>Ignored script</script><style>Ignored style</style>'
+                              b'<template>Ignored template</template>',
             "/content/page": b'<title>Semantic page</title><header>Site header</header>'
                              b'<nav><a href="/content/outside">Outside</a></nav>'
                              b'<article><header><h1>Heading</h1></header><p>Caf\xc3\xa9 &amp; tea</p>'

@@ -71,22 +71,27 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         const HtmlDocument document{html};
         const CrawlTarget parent{fetched->final_url, target->depth};
         auto extracted = document.main_text();
-        const auto identity = make_page_identity(fetched->final_url, extracted.text);
-        if (!identity) {
-            throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
-        }
-        if (seen_text_hashes.insert(identity->text_hash).second) {
-            // FIFO chooses the first representative; only unique text uses the page budget.
-            const CrawledPage page{fetched->final_url, document.title(), std::move(extracted.text),
-                                   target->depth, response.status, response.content_type,
-                                   std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
-                                   fetched_at, extracted.source};
-            consume(page);
-            ++summary.pages;
+        if (extracted.text.empty()) {
+            // Extraction has already normalized whitespace and removed ignored subtrees.
+            ++summary.empty_texts;
         } else {
-            ++summary.duplicate_texts;
+            const auto identity = make_page_identity(fetched->final_url, extracted.text);
+            if (!identity) {
+                throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
+            }
+            if (seen_text_hashes.insert(identity->text_hash).second) {
+                // FIFO chooses the first representative; only unique text uses the page budget.
+                const CrawledPage page{fetched->final_url, document.title(), std::move(extracted.text),
+                                       target->depth, response.status, response.content_type,
+                                       std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
+                                       fetched_at, extracted.source};
+                consume(page);
+                ++summary.pages;
+            } else {
+                ++summary.duplicate_texts;
+            }
         }
-        // Duplicate text may contain different hrefs, so discovery always continues.
+        // Empty or duplicate text can still lead to useful pages.
         // Relative references belong to the final URL, not the redirect source.
         for (const auto& link : document.links()) {
             (void)frontier.add_link(parent, link);

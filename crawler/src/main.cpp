@@ -69,6 +69,7 @@ auto run(int argc, char* argv[]) -> int
                   << " pages=" << summary.pages << " targets=" << summary.targets_processed
                   << " fetch_failures=" << summary.fetch_failures
                   << " skipped_responses=" << summary.skipped_responses
+                  << " empty_texts=" << summary.empty_texts
                   << " duplicate_pages=" << summary.duplicate_pages
                   << " duplicate_texts=" << summary.duplicate_texts
                   << " rejected_seeds=" << summary.rejected_seeds
