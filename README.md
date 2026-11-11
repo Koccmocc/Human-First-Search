@@ -153,7 +153,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `crawler/src/main.cpp`: process entry point, output and exit codes.
 - `crawler/tests/cli_test.cmake`: help/version and argument-error process checks.
 - `crawler/tests/cli_crawl_test.py`: local crawl checks against the built executable.
-- `docs/liubomyr-plan.md`: scope, implementation stages and draft corpus contract.
+- `docs/corpus-format.md`: draft JSONL corpus contract.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
@@ -674,13 +674,56 @@ language detection, detailed crawl logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Eighteen GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Twenty-one GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
 failure recovery, encoding rejection, page identities, timestamps, semantic selection,
 empty-text filtering, text deduplication,
 seed rejection and consumer errors.
 No internet is needed.
+
+### Crawl outcome events
+
+`CrawlOptions::on_event` is an optional synchronous `CrawlObserver`. It receives
+one `CrawlEvent` for each completed queue target, in processing order. Leave it
+empty to disable notifications. An observer may retain a copy: event strings and
+error details own their data. The callback reference itself expires on return.
+
+```cpp
+hfs::CrawlOptions options;
+options.on_event = [](const hfs::CrawlEvent& event) {
+    if (event.outcome == hfs::CrawlOutcome::empty_text) {
+        std::cerr << "Empty text: " << event.target.url << '\n';
+    }
+};
+const auto summary = hfs::crawl(seeds, {"example.org"}, consume, options);
+```
+
+`CrawlOutcome` distinguishes `page_delivered`, `fetch_failed`, `response_skipped`,
+`empty_text`, `duplicate_url` and `duplicate_text`, corresponding to the existing
+summary counters. Each event includes the queued URL and depth. A completed fetch
+adds the final URL and HTTP status. A known queued URL skipped before fetching
+has its known final URL but no fresh status. Fetch failures have neither: the
+current fetcher does not expose a partial request chain on errors.
+
+For `fetch_failed`, `fetch_error` holds the original typed `HttpError` or
+`FetchError`, including its message; other outcomes keep `std::monostate`. A
+`FetchErrorKind::request_denied` still combines scope and robots denials because
+the fetcher's permission callback returns only a boolean. Events do not invent
+a more specific reason. For status 200, `html_input` records the typed input-gate
+result; other statuses and targets skipped before fetching leave it absent.
+
+Notifications follow successful consumer work and link discovery when applicable.
+Observer exceptions abort the crawl and propagate, just like consumer exceptions.
+Rejected seeds, discovered links refused by the frontier, individual HTTP/robots
+requests, unprocessed pending URLs and targets aborted by exceptions are outside
+this event stream. In a normally completed session, event count equals
+`targets_processed`. No HTML bodies are retained in events.
+
+Three added HTTP scenarios cover all outcomes, redirects before/after a known
+destination, typed errors, owning copies, discovery, limits and callback failures.
+This library interface is the first step toward a crawl journal; the CLI does
+not yet expose a log file option or print these events automatically.
 
 ### Empty-text filtering
 

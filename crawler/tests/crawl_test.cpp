@@ -326,6 +326,107 @@ TEST_F(Crawl, HandlesEmptyAndRejectedSeedLists)
     EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
 }
 
+TEST_F(Crawl, ReportsOwnedEventsWithTypedReasonsForEachCompletedTarget)
+{
+    options.frontier.max_depth = 0;
+    std::vector<hfs::CrawlEvent> events;
+    options.on_event = [&](const auto& event) { events.push_back(event); };
+    const std::vector<std::string> seeds{
+        base + "/crawl/alias", base + "/crawl/nested/page", base + "/crawl/alias-two",
+        base + "/dedup/z", base + "/dedup/a", base + "/content/empty",
+        base + "/crawl/error", base + "/encoding/broken", base + "/private/page",
+        base + "/partial", base + "/loop-a"
+    };
+    const auto summary = run(seeds);
+    using enum hfs::CrawlOutcome;
+    const std::vector<hfs::CrawlOutcome> expected{
+        page_delivered, duplicate_url, duplicate_url, page_delivered, duplicate_text,
+        empty_text, response_skipped, response_skipped, fetch_failed, fetch_failed, fetch_failed
+    };
+    ASSERT_EQ(events.size(), seeds.size());
+    EXPECT_EQ(events.size(), summary.targets_processed);
+    for (std::size_t index = 0; index < events.size(); ++index) {
+        SCOPED_TRACE(index);
+        EXPECT_EQ(events[index].target.url, seeds[index]);
+        EXPECT_EQ(events[index].target.depth, 0U);
+        EXPECT_EQ(events[index].outcome, expected[index]);
+    }
+    EXPECT_EQ(summary.pages, 2U);
+    EXPECT_EQ(summary.duplicate_pages, 2U);
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(summary.empty_texts, 1U);
+    EXPECT_EQ(summary.skipped_responses, 2U);
+    EXPECT_EQ(summary.fetch_failures, 3U);
+
+    EXPECT_EQ(events[0].final_url, base + "/crawl/nested/page");
+    EXPECT_EQ(events[0].http_status, 200);
+    EXPECT_EQ(events[0].html_input, hfs::HtmlInputStatus::ready);
+    EXPECT_TRUE(std::holds_alternative<std::monostate>(events[0].fetch_error));
+    EXPECT_EQ(events[1].final_url, events[0].final_url);
+    EXPECT_FALSE(events[1].http_status); // This queued destination needed no request.
+    EXPECT_FALSE(events[1].html_input);
+    EXPECT_EQ(events[2].final_url, events[0].final_url);
+    EXPECT_EQ(events[2].http_status, 200); // Another alias required a fetch first.
+    EXPECT_EQ(events[6].http_status, 404);
+    EXPECT_FALSE(events[6].html_input);
+    EXPECT_EQ(events[7].html_input, hfs::HtmlInputStatus::invalid_text);
+    for (const auto index : {8U, 9U, 10U}) {
+        EXPECT_FALSE(events[index].final_url);
+        EXPECT_FALSE(events[index].http_status);
+        EXPECT_FALSE(events[index].html_input);
+    }
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(events[8].fetch_error));
+    EXPECT_EQ(std::get<hfs::FetchError>(events[8].fetch_error).kind,
+              hfs::FetchErrorKind::request_denied);
+    ASSERT_TRUE(std::holds_alternative<hfs::HttpError>(events[9].fetch_error));
+    EXPECT_EQ(std::get<hfs::HttpError>(events[9].fetch_error).kind, hfs::HttpErrorKind::transport);
+    ASSERT_TRUE(std::holds_alternative<hfs::FetchError>(events[10].fetch_error));
+    EXPECT_EQ(std::get<hfs::FetchError>(events[10].fetch_error).kind,
+              hfs::FetchErrorKind::redirect_loop);
+}
+
+TEST_F(Crawl, EventsPreserveDiscoveryAndExcludeRejectedSeedsAndPendingTargets)
+{
+    options.max_pages = 1;
+    std::vector<hfs::CrawlEvent> events;
+    options.on_event = [&](const auto& event) { events.push_back(event); };
+    auto summary = run({base + "/content/empty"});
+    ASSERT_EQ(events.size(), 2U);
+    EXPECT_EQ(events[0].outcome, hfs::CrawlOutcome::empty_text);
+    EXPECT_EQ(events[1].outcome, hfs::CrawlOutcome::page_delivered);
+    EXPECT_EQ(events[1].target.url, base + "/content/outside");
+    EXPECT_EQ(events[1].target.depth, 1U);
+    EXPECT_EQ(summary.pages, 1U);
+
+    events.clear();
+    pages.clear();
+    summary = run({"relative", base + "/crawl/start"});
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].target.url, base + "/crawl/start");
+    EXPECT_EQ(summary.rejected_seeds, 1U);
+    EXPECT_EQ(summary.pending_urls, 3U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::page_limit);
+}
+
+TEST_F(Crawl, ObserverRunsAfterConsumerAndItsExceptionsAbortTheSession)
+{
+    std::size_t calls{};
+    options.on_event = [&](const auto&) {
+        ++calls;
+        EXPECT_EQ(pages.size(), 1U); // Delivery must have completed before the event.
+        throw std::runtime_error{"Observer failed"};
+    };
+    EXPECT_THROW(run({base + "/crawl/start"}), std::runtime_error);
+    EXPECT_EQ(calls, 1U);
+
+    calls = 0;
+    const std::vector<std::string> seeds{base + "/crawl/b"};
+    EXPECT_THROW((void)hfs::crawl(seeds, {"127.0.0.1"}, [](const auto&) {
+        throw std::runtime_error{"Consumer failed"};
+    }, options), std::runtime_error);
+    EXPECT_EQ(calls, 0U); // An aborted target is not reported as completed.
+}
+
 TEST_F(Crawl, ValidatesLimitsAndConsumerAndPropagatesConsumerExceptions)
 {
     options.max_pages = 0;

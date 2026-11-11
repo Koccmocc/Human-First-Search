@@ -27,6 +27,11 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
 
     std::unordered_set<std::string> processed_urls;
     std::unordered_set<std::string> seen_text_hashes;
+    const auto notify = [&options](const CrawlEvent& event) {
+        if (options.on_event) {
+            options.on_event(event);
+        }
+    };
     while (frontier.size() != 0) {
         if (summary.pages == options.max_pages) {
             summary.stop = CrawlStop::page_limit;
@@ -38,9 +43,14 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const auto target = frontier.pop();
         ++summary.targets_processed;
+        CrawlEvent event;
+        event.target = *target;
         // A previous redirect may already have processed this queued destination.
         if (processed_urls.contains(target->url)) {
             ++summary.duplicate_pages;
+            event.outcome = CrawlOutcome::duplicate_url;
+            event.final_url = target->url;
+            notify(event);
             continue;
         }
 
@@ -48,19 +58,34 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         auto* fetched = std::get_if<FetchResponse>(&result);
         if (fetched == nullptr) {
             ++summary.fetch_failures;
+            event.outcome = CrawlOutcome::fetch_failed;
+            if (const auto* error = std::get_if<HttpError>(&result)) {
+                event.fetch_error = *error;
+            } else {
+                event.fetch_error = std::get<FetchError>(result);
+            }
+            notify(event);
             continue;
         }
         // Capture completion before HTML parsing, hashing or consumer work begins.
         const auto fetched_at = options.wall_now();
         const auto& response = fetched->response;
+        event.final_url = fetched->final_url;
+        event.http_status = response.status;
+        if (response.status == 200) {
+            event.html_input = check_html_input(response.content_type, response.body);
+        }
         // Error pages and other media must not become HTML discovery sources.
-        if (response.status != 200 ||
-            check_html_input(response.content_type, response.body) != HtmlInputStatus::ready) {
+        if (response.status != 200 || event.html_input != HtmlInputStatus::ready) {
             ++summary.skipped_responses;
+            event.outcome = CrawlOutcome::response_skipped;
+            notify(event);
             continue;
         }
         if (!processed_urls.insert(fetched->final_url).second) {
             ++summary.duplicate_pages;
+            event.outcome = CrawlOutcome::duplicate_url;
+            notify(event);
             continue;
         }
 
@@ -74,6 +99,7 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         if (extracted.text.empty()) {
             // Extraction has already normalized whitespace and removed ignored subtrees.
             ++summary.empty_texts;
+            event.outcome = CrawlOutcome::empty_text;
         } else {
             const auto identity = make_page_identity(fetched->final_url, extracted.text);
             if (!identity) {
@@ -87,8 +113,10 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
                                        fetched_at, extracted.source};
                 consume(page);
                 ++summary.pages;
+                event.outcome = CrawlOutcome::page_delivered;
             } else {
                 ++summary.duplicate_texts;
+                event.outcome = CrawlOutcome::duplicate_text;
             }
         }
         // Empty or duplicate text can still lead to useful pages.
@@ -96,6 +124,8 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         for (const auto& link : document.links()) {
             (void)frontier.add_link(parent, link);
         }
+        // Report completion only after the consumer and link discovery succeeded.
+        notify(event);
     }
     summary.pending_urls = frontier.size();
     return summary;

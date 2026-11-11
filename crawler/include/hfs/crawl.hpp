@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hfs/crawl_event.hpp"
 #include "hfs/page_fetcher.hpp"
 #include "hfs/html_document.hpp"
 #include "hfs/url_frontier.hpp"
@@ -26,6 +27,8 @@ struct CrawlOptions {
     std::size_t max_redirects{5};
     // Used only for fetch metadata; request spacing keeps its separate steady clock.
     std::function<WallClock::time_point()> wall_now{WallClock::now};
+    // Optional synchronous notification after each completed queue target.
+    CrawlObserver on_event;
 };
 
 struct CrawledPage {
@@ -66,7 +69,8 @@ using PageConsumer = std::function<void(const CrawledPage&)>;
 // reaches extraction; rejected metadata/encodings count as skipped_responses.
 // Delivers the first page for each nonempty extracted-text SHA-256.
 // Empty texts count as empty_texts; empty texts and duplicates still supply links.
-// Setup, clock, allocation, parser and consumer exceptions abort the session and propagate.
+// Setup, clock, allocation, parser, consumer and observer exceptions abort and propagate.
+// Events exclude rejected seeds, unprocessed pending URLs and targets aborted by exceptions.
 [[nodiscard]] auto crawl(std::span<const std::string> seeds,
                          std::vector<std::string> allowed_hosts,
                          const PageConsumer& consume, const CrawlOptions& options = {})
