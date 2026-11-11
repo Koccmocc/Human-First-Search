@@ -127,6 +127,34 @@ fields across repeated live exports, and covers multiple/empty outputs and failu
 before HTTP requests. Fixed-record
 unit tests still verify byte-for-byte serialization, including the captured time.
 
+## Write a crawl journal
+
+Use `--log PATH` to save the outcomes of completed queue targets:
+
+```powershell
+./build/debug/crawler/hfs-crawler.exe crawl --seed https://example.org/ --allow-host example.org --max-pages 5 --output data/corpus.jsonl --log data/crawl.jsonl
+```
+
+Create the parent directory first and choose new file names. `--log` also works
+without `--output`; stdout still lists delivered URLs and stderr contains the
+session summary. Each log line identifies the queued URL, depth, outcome, known
+final URL/status and typed input or fetch error. Unknown fields are `null`.
+The [log format](docs/crawl-log-format.md) documents the fields and boundaries.
+
+The corpus contains accepted pages; the journal also records empty texts,
+duplicates, response skips and fetch failures. In a normally completed run its
+line count equals `targets` in the summary. It excludes pending targets, rejected
+seeds/links and individual HTTP/robots requests. Event timestamps and mappings
+from text duplicates to representatives remain future work.
+
+Existing destinations are rejected before requests; corpus and log cannot share
+a file. Files are opened sequentially, so a failure opening the second file may
+leave the first file empty. Serialization, write or close failures are fatal and
+can leave partial output; check exit status before treating either file as complete.
+Unit tests cover names, error categories, escaping, repeatability and stream
+failures. Python CLI tests independently read the journal, reconcile summary and
+corpus records, and check log-only runs and invalid destinations.
+
 ## Structure and decisions
 
 ### VS Code IntelliSense
@@ -154,6 +182,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `crawler/tests/cli_test.cmake`: help/version and argument-error process checks.
 - `crawler/tests/cli_crawl_test.py`: local crawl checks against the built executable.
 - `docs/corpus-format.md`: draft JSONL corpus contract.
+- `docs/crawl-log-format.md`: crawl-event JSONL journal contract.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
@@ -670,7 +699,7 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 
 The input gate below validates UTF-8 before extraction. The extractor selects
 semantic content with filtered body fallback. Charset conversion, HTML `base`,
-language detection, detailed crawl logs and a global duration limit remain
+language detection, per-request logs and a global duration limit remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
@@ -722,8 +751,8 @@ this event stream. In a normally completed session, event count equals
 
 Three added HTTP scenarios cover all outcomes, redirects before/after a known
 destination, typed errors, owning copies, discovery, limits and callback failures.
-This library interface is the first step toward a crawl journal; the CLI does
-not yet expose a log file option or print these events automatically.
+The CLI connects this observer to `write_crawl_event_jsonl()` when `--log` is
+supplied. It leaves notifications disabled otherwise.
 
 ### Empty-text filtering
 
@@ -775,7 +804,7 @@ Four added C++ scenarios cover duplicate-only link discovery, repeated final URL
 representative choice/session isolation, page/target budgets, changed text and
 empty-body rejection. The Python CLI reader verifies unique output fingerprints and
 continued discovery in the actual exported JSONL. Detailed URL-to-representative
-mapping remains part of the future crawl journal.
+mapping remains a future extension to the crawl journal.
 
 ### HTML encoding input policy
 

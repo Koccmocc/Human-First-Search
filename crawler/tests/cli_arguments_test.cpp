@@ -75,6 +75,25 @@ TEST(CliArguments, KeepsCrawlDefaultsAndAllowsZeroDepthAndDelay)
     EXPECT_EQ(std::get<hfs::CrawlCommand>(zero).options.timing.interval.count(), 0);
 }
 
+TEST(CliArguments, OwnsOptionalLogPathAndRejectsInvalidOrRepeatedLogArguments)
+{
+    std::string path{"crawl log.jsonl"};
+    const auto result = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+                               "--log", path, "--output", "corpus.jsonl"});
+    path = "changed";
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+    const auto& command = std::get<hfs::CrawlCommand>(result);
+    EXPECT_EQ(command.log_path, "crawl log.jsonl");
+    EXPECT_EQ(command.output_path, "corpus.jsonl");
+    for (const auto value : {std::string_view{}, std::string_view{"bad\0path", 8}}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+            "--allow-host", "example.org", "--log", value})));
+    }
+    EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--log"})));
+    EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+        "--allow-host", "example.org", "--log", "one.jsonl", "--log", "two.jsonl"})));
+}
+
 TEST(CliArguments, RequiresExplicitSeedsAndScopeAndChecksEverySeed)
 {
     for (const auto& result : {parse({"crawl"}), parse({"crawl", "--seed", "https://example.org/"}),

@@ -173,6 +173,81 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(summary["empty_texts"], "2")
             self.assertEqual(summary["duplicate_texts"], "0")
 
+    def test_log_round_trip_covers_outcomes_and_matches_summary_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "crawl log.jsonl"
+            corpus = Path(directory) / "corpus.jsonl"
+            paths = ("/crawl/alias", "/crawl/nested/page", "/crawl/alias-two", "/dedup/z", "/dedup/a",
+                     "/content/empty", "/crawl/error", "/encoding/broken", "/private/page", "/partial", "/loop-a")
+            arguments = [item for path in paths for item in ("--seed", BASE + path)]
+            result = self.run_crawl(*arguments, "--max-depth", "0", "--output", str(corpus), "--log", str(log))
+            summary = self.summary(result)
+            raw = log.read_bytes()
+            self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+            self.assertNotIn(b"\r", raw)
+            self.assertTrue(raw.endswith(b"\n"))
+            events = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+            self.assertEqual(len(events), int(summary["targets"]))
+            self.assertEqual([event["url"] for event in events], [BASE + path for path in paths])
+            counters = {"page_delivered": "pages", "fetch_failed": "fetch_failures",
+                        "response_skipped": "skipped_responses", "empty_text": "empty_texts",
+                        "duplicate_url": "duplicate_pages", "duplicate_text": "duplicate_texts"}
+            for outcome, counter in counters.items():
+                self.assertEqual(sum(event["outcome"] == outcome for event in events), int(summary[counter]))
+            for event in events:
+                self.assertEqual(event["schema_version"], 1)
+                self.assertEqual(event["event"], "crawl_target")
+                self.assertEqual(event["depth"], 0)
+            self.assertEqual(events[0]["final_url"], BASE + "/crawl/nested/page")
+            self.assertEqual(events[0]["http_status"], 200)
+            self.assertEqual(events[0]["html_input"], "ready")
+            self.assertIsNone(events[0]["error"])
+            self.assertIsNone(events[1]["http_status"])
+            self.assertEqual(events[2]["http_status"], 200)
+            self.assertEqual(events[6]["http_status"], 404)
+            self.assertIsNone(events[6]["html_input"])
+            self.assertEqual(events[7]["html_input"], "invalid_text")
+            for index, category, kind in ((8, "fetch", "request_denied"), (9, "http", "transport"),
+                                          (10, "fetch", "redirect_loop")):
+                self.assertIsNone(events[index]["final_url"])
+                self.assertIsNone(events[index]["http_status"])
+                self.assertEqual(events[index]["error"]["category"], category)
+                self.assertEqual(events[index]["error"]["kind"], kind)
+                self.assertTrue(events[index]["error"]["message"])
+            records = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([record["url"] for record in records], result.stdout.splitlines())
+            self.assertEqual([record["url"] for record in records],
+                             [event["final_url"] for event in events if event["outcome"] == "page_delivered"])
+
+    def test_log_without_corpus_excludes_pending_targets_at_page_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "events.jsonl"
+            result = self.run_crawl("--seed", BASE + "/crawl/start", "--max-pages", "1", "--log", str(log))
+            summary = self.summary(result)
+            events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["outcome"], "page_delivered")
+            self.assertEqual(result.stdout.splitlines(), [BASE + "/crawl/start"])
+            self.assertEqual(summary["pending_urls"], "3")
+
+    def test_log_rejects_existing_unavailable_and_shared_destinations_before_http(self):
+        with tempfile.TemporaryDirectory() as directory:
+            existing = Path(directory) / "existing.jsonl"
+            existing.write_bytes(b"keep this log\n")
+            for path in (existing, Path(directory), Path(directory) / "missing" / "log.jsonl"):
+                result = self.run_crawl("--seed", BASE + "/must-not-follow", "--log", str(path))
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("JSONL", result.stderr)
+            self.assertEqual(existing.read_bytes(), b"keep this log\n")
+            shared = Path(directory) / "shared.jsonl"
+            alias = str(directory) + "/./shared.jsonl"
+            result = self.run_crawl("--seed", BASE + "/must-not-follow",
+                                    "--output", str(shared), "--log", alias)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(shared.read_bytes(), b"")
+
     def test_existing_or_unavailable_output_fails_before_http_and_preserves_existing_data(self):
         with tempfile.TemporaryDirectory() as directory:
             existing = Path(directory) / "existing.jsonl"

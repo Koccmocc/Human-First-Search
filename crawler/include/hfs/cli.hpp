@@ -21,6 +21,7 @@ struct CrawlCommand {
     std::vector<std::string> allowed_hosts;
     CrawlOptions options;
     std::optional<std::string> output_path;
+    std::optional<std::string> log_path;
 };
 
 // Parsed commands and errors own their strings; argv can be released afterwards.

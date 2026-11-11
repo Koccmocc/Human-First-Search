@@ -84,7 +84,7 @@ earlier crawl exports may contain one empty-text representative. Short nonempty
 texts remain eligible, and unmarked boilerplate may remain in selected text.
 This export is an intermediate data format before content-quality evaluation,
 language filtering and the final reproducibility manifest are complete. Detailed
-mapping from skipped URLs to their representatives belongs to the future crawl journal.
+mapping from skipped URLs to their representatives remains a future journal extension.
 
 `write_page_jsonl(output, page)` accepts a page produced by the crawl loop. It
 preserves the supplied fields and does not recompute IDs, validate their semantic
