@@ -12,10 +12,12 @@ namespace hfs {
 auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_hosts,
            const PageConsumer& consume, const CrawlOptions& options) -> CrawlSummary
 {
-    if (!consume || !options.wall_now || options.max_pages == 0 || options.max_targets == 0) {
-        throw std::invalid_argument{"Crawl requires a consumer, wall clock and positive page/target limits"};
+    if (!consume || !options.wall_now || !options.steady_now ||
+        options.max_pages == 0 || options.max_targets == 0 || options.max_duration.count() <= 0) {
+        throw std::invalid_argument{"Crawl requires a consumer, clocks and positive page/target/duration limits"};
     }
 
+    const auto started = options.steady_now();
     UrlFrontier frontier{allowed_hosts, options.frontier};
     PageFetcher fetcher{std::move(allowed_hosts), options.robots, options.timing};
     CrawlSummary summary;
@@ -39,6 +41,13 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         if (summary.targets_processed == options.max_targets) {
             summary.stop = CrawlStop::target_limit;
+            break;
+        }
+        // Convert elapsed time down to milliseconds, avoiding an overflowing
+        // conversion of very large user-supplied budgets to the clock's finer ticks.
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(options.steady_now() - started);
+        if (elapsed >= options.max_duration) {
+            summary.stop = CrawlStop::duration_limit;
             break;
         }
         const auto target = frontier.pop();

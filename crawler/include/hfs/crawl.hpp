@@ -17,6 +17,7 @@ namespace hfs {
 
 struct CrawlOptions {
     using WallClock = std::chrono::system_clock;
+    using SteadyClock = std::chrono::steady_clock;
 
     FrontierLimits frontier;
     HttpOptions http;
@@ -25,6 +26,9 @@ struct CrawlOptions {
     std::size_t max_pages{1000}; // Records with nonempty, distinct extracted-text SHA-256 values.
     std::size_t max_targets{5000};
     std::size_t max_redirects{5};
+    // Checked before each queue target; an in-progress target finishes normally.
+    std::chrono::milliseconds max_duration{std::chrono::minutes{30}};
+    std::function<SteadyClock::time_point()> steady_now{SteadyClock::now};
     // Used only for fetch metadata; request spacing keeps its separate steady clock.
     std::function<WallClock::time_point()> wall_now{WallClock::now};
     // Optional synchronous notification after each completed queue target.
@@ -47,7 +51,7 @@ struct CrawledPage {
     HtmlTextSource text_source{HtmlTextSource::body};
 };
 
-enum class CrawlStop { queue_empty, page_limit, target_limit };
+enum class CrawlStop { queue_empty, page_limit, target_limit, duration_limit };
 
 struct CrawlSummary {
     CrawlStop stop{CrawlStop::queue_empty};

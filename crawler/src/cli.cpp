@@ -52,7 +52,7 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
         const auto limit = std::find_if(limits.begin(), limits.end(),
                                          [option](const auto& item) { return item.name == option; });
         if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" &&
-            option != "--output" && option != "--log" && limit == limits.end()) {
+            option != "--output" && option != "--log" && option != "--max-duration-ms" && limit == limits.end()) {
             return hfs::CliError{"Unknown argument: " + std::string{option}};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--")) {
@@ -83,16 +83,22 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
             if (!supplied.insert(option).second) {
                 return hfs::CliError{"Duplicate option: " + std::string{option}};
             }
-            const auto number = count(value, option == "--delay-ms" || limit->allow_zero);
+            const auto number = count(value, option == "--delay-ms" ||
+                                            (limit != limits.end() && limit->allow_zero));
             if (!number) {
                 return hfs::CliError{"Invalid decimal value for " + std::string{option}};
             }
-            if (option == "--delay-ms") {
+            if (option == "--delay-ms" || option == "--max-duration-ms") {
                 using Milliseconds = std::chrono::milliseconds;
                 if (!std::in_range<Milliseconds::rep>(*number)) {
-                    return hfs::CliError{"Value out of range for --delay-ms"};
+                    return hfs::CliError{"Value out of range for " + std::string{option}};
                 }
-                command.options.timing.interval = Milliseconds{static_cast<Milliseconds::rep>(*number)};
+                const Milliseconds duration{static_cast<Milliseconds::rep>(*number)};
+                if (option == "--delay-ms") {
+                    command.options.timing.interval = duration;
+                } else {
+                    command.options.max_duration = duration;
+                }
             } else {
                 *limit->value = *number;
             }
@@ -157,6 +163,7 @@ auto help_text() noexcept -> std::string_view
            "  --allow-host HOST   Explicit host without scheme/path/port; repeatable and required.\n"
            "  --max-pages N       Unique-text HTML page limit (default 1000).\n"
            "  --max-targets N     Processed queue entry limit (default 5000).\n"
+           "  --max-duration-ms N Stop starting queue targets after N ms (default 1800000).\n"
            "  --max-depth N       Link depth; seeds are zero (default 3).\n"
            "  --max-pending N     Pending queue capacity (default 1000).\n"
            "  --max-urls N        Total admitted URL limit (default 5000).\n"
@@ -169,7 +176,8 @@ auto help_text() noexcept -> std::string_view
            "Uses robots.txt, UTF-8 HTML checks, default HTTP timeouts and five redirects.\n"
            "Keeps the first page per text SHA-256; duplicate pages still supply links.\n"
            "With --output, also writes page records as JSONL; existing paths are rejected.\n"
-           "With --log, writes completed crawl targets to a separate new JSONL file.\n";
+           "With --log, writes completed crawl targets to a separate new JSONL file.\n"
+           "The duration limit lets the current target finish, including requests and callbacks.\n";
 }
 
 auto version() noexcept -> std::string_view

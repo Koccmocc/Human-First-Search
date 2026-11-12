@@ -22,7 +22,7 @@ class Handler(BaseHTTPRequestHandler):
             self.server.followed = True
         if self.path.startswith("/private"):
             self.server.blocked_page_requested = True
-        if self.path == "/slow":
+        if self.path in ("/slow", "/crawl/slow-start"):
             time.sleep(0.5)
         redirects = {
             "/redirect": (302, "/must-not-follow"),
@@ -50,6 +50,7 @@ class Handler(BaseHTTPRequestHandler):
         status, location = redirects.get(self.path, (default_status, None))
         body = b"x" * 128 if self.path == "/large" else b"<p>Hello</p>"
         crawl_pages = {
+            "/crawl/slow-start": b'<main>Slow page</main><nav><a href="/must-not-follow">Next</a></nav>',
             "/crawl/start": b'<title>Start</title><p>Start body</p>'
                             b'<a href="a#first">A</a><a href="a#again">Duplicate</a>'
                             b'<a href="b">B</a><a href="/private/page">Private</a>'

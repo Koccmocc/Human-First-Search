@@ -47,6 +47,29 @@ class CliCrawl(unittest.TestCase):
         self.assertEqual(summary["stop"], "page_limit")
         self.assertEqual(summary["pending_urls"], "3")
 
+    def test_duration_limit_closes_exports_and_leaves_later_targets_unrequested(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "timed-corpus.jsonl"
+            log = Path(directory) / "timed-log.jsonl"
+            result = self.run_crawl("--seed", BASE + "/crawl/slow-start", "--seed", BASE + "/must-not-follow",
+                                    "--max-duration-ms", "100", "--output", str(corpus), "--log", str(log))
+            summary = self.summary(result)
+            self.assertEqual(summary["stop"], "duration_limit")
+            records = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
+            events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+            # Heavy scheduling delays may exhaust the budget even before the first target.
+            self.assertIn(int(summary["targets"]), (0, 1))
+            self.assertEqual(len(records), int(summary["pages"]))
+            self.assertEqual(len(events), int(summary["targets"]))
+            self.assertEqual([record["url"] for record in records], result.stdout.splitlines())
+            if events:
+                self.assertEqual(events[0]["url"], BASE + "/crawl/slow-start")
+                self.assertEqual(events[0]["outcome"], "page_delivered")
+                self.assertEqual(records[0]["text"], "Slow page")
+                self.assertEqual(summary["pending_urls"], "1")
+            else:
+                self.assertEqual(summary["pending_urls"], "2")
+
     def test_invalid_scope_fails_before_any_seed_request(self):
         result = self.run_crawl("--seed", BASE + "/must-not-follow",
                                 "--seed", "http://example.invalid/outside")

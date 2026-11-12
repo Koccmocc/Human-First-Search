@@ -427,6 +427,100 @@ TEST_F(Crawl, ObserverRunsAfterConsumerAndItsExceptionsAbortTheSession)
     EXPECT_EQ(calls, 0U); // An aborted target is not reported as completed.
 }
 
+TEST_F(Crawl, ExpiredDurationLeavesTheFirstTargetPendingWithoutFetching)
+{
+    using namespace std::chrono;
+    options.max_duration = 10ms;
+    std::size_t ticks{};
+    options.steady_now = [&] {
+        return hfs::CrawlOptions::SteadyClock::time_point{} + (ticks++ == 0 ? 0ms : 10ms);
+    };
+    std::size_t events{};
+    options.on_event = [&](const auto&) { ++events; };
+    const auto summary = run({base + "/must-not-follow"});
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::duration_limit);
+    EXPECT_EQ(summary.targets_processed, 0U);
+    EXPECT_EQ(summary.pending_urls, 1U);
+    EXPECT_EQ(summary.pages, 0U);
+    EXPECT_EQ(events, 0U);
+    EXPECT_TRUE(pages.empty());
+}
+
+TEST_F(Crawl, DurationStopsAfterCompletedDeliveryDiscoveryAndEvent)
+{
+    using namespace std::chrono;
+    auto now = hfs::CrawlOptions::SteadyClock::time_point{};
+    options.max_duration = 10ms;
+    options.steady_now = [&] { return now; };
+    std::vector<hfs::CrawlEvent> events;
+    options.on_event = [&](const auto& event) {
+        events.push_back(event);
+        now += 10ms; // Include synchronous observer work in the next budget check.
+    };
+    const auto summary = run({base + "/crawl/start"});
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::duration_limit);
+    EXPECT_EQ(summary.pages, 1U);
+    EXPECT_EQ(summary.targets_processed, 1U);
+    EXPECT_EQ(summary.pending_urls, 3U);
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].outcome, hfs::CrawlOutcome::page_delivered);
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].url, base + "/crawl/start");
+}
+
+TEST_F(Crawl, DurationAlsoAccountsForFailedAndEmptyTargets)
+{
+    using namespace std::chrono;
+    auto now = hfs::CrawlOptions::SteadyClock::time_point{};
+    options.max_duration = 10ms;
+    options.steady_now = [&] { return now; };
+    options.on_event = [&](const auto&) { now += 5ms; };
+    const auto summary = run({base + "/private/page", base + "/content/empty",
+                              base + "/must-not-follow"});
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::duration_limit);
+    EXPECT_EQ(summary.targets_processed, 2U);
+    EXPECT_EQ(summary.fetch_failures, 1U);
+    EXPECT_EQ(summary.empty_texts, 1U);
+    EXPECT_EQ(summary.pages, 0U);
+    EXPECT_EQ(summary.pending_urls, 2U); // Includes the empty page's discovered child.
+}
+
+TEST_F(Crawl, QueuePageAndTargetStopsTakePrecedenceOverExpiredDuration)
+{
+    using namespace std::chrono;
+    auto now = hfs::CrawlOptions::SteadyClock::time_point{};
+    options.max_duration = 10ms;
+    options.steady_now = [&] { return now; };
+    options.on_event = [&](const auto&) { now += 10ms; };
+    EXPECT_EQ(run({base + "/crawl/b"}).stop, hfs::CrawlStop::queue_empty);
+    options.max_pages = 1;
+    EXPECT_EQ(run({base + "/crawl/start"}).stop, hfs::CrawlStop::page_limit);
+    options.max_pages = 10;
+    options.max_targets = 1;
+    EXPECT_EQ(run({base + "/crawl/start"}).stop, hfs::CrawlStop::target_limit);
+}
+
+TEST_F(Crawl, ValidatesDurationAndClockAndHandlesLargeBudgetsWithoutOverflow)
+{
+    using namespace std::chrono;
+    for (const auto duration : {0ms, -1ms}) {
+        options.max_duration = duration;
+        EXPECT_THROW(run({base + "/must-not-follow"}), std::invalid_argument);
+    }
+    options.max_duration = 1s;
+    options.steady_now = {};
+    EXPECT_THROW(run({base + "/must-not-follow"}), std::invalid_argument);
+    options.steady_now = []() -> hfs::CrawlOptions::SteadyClock::time_point {
+        throw std::logic_error{"Clock failed"};
+    };
+    EXPECT_THROW(run({base + "/must-not-follow"}), std::logic_error);
+
+    std::size_t ticks{};
+    options.steady_now = [&] { return hfs::CrawlOptions::SteadyClock::time_point{} + milliseconds{ticks++}; };
+    options.max_duration = milliseconds::max();
+    EXPECT_EQ(run({base + "/crawl/b"}).pages, 1U);
+}
+
 TEST_F(Crawl, ValidatesLimitsAndConsumerAndPropagatesConsumerExceptions)
 {
     options.max_pages = 0;

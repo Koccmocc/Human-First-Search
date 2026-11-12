@@ -46,6 +46,7 @@ auto stop_name(hfs::CrawlStop stop) noexcept -> std::string_view
     case hfs::CrawlStop::queue_empty: return "queue_empty";
     case hfs::CrawlStop::page_limit: return "page_limit";
     case hfs::CrawlStop::target_limit: return "target_limit";
+    case hfs::CrawlStop::duration_limit: return "duration_limit";
     }
     return "unknown";
 }

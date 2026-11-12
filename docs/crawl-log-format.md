@@ -31,6 +31,11 @@ delivery and link discovery. Pending targets, rejected seeds/links and individua
 HTTP/robots requests are outside this stream. It contains no bodies, event
 timestamps, partial redirect chains on failures or duplicate-representative map.
 
+When `--max-duration-ms` stops scheduling new targets, completed targets remain in
+the log and pending URLs do not receive events. The summary reports
+`stop=duration_limit`, exit status is 0 and both output streams close normally.
+The current target is allowed to finish even when its work exceeds the budget.
+
 Destinations must be new files with existing parent directories. Existing files,
 directories and symlinks are rejected before crawling. Pointing `--output` and
 `--log` at the same file fails before requests. Files open sequentially, so an

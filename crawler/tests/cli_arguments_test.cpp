@@ -28,7 +28,8 @@ TEST(CliArguments, BuildsOwningCanonicalConfigurationWithMultipleSeedsAndHosts)
                          "--seed", "http://[::1]/", "--allow-host", "EXAMPLE.org",
                          "--allow-host", "[::1]", "--allow-host", "example.org",
                          "--max-pages", "12", "--max-targets", "30", "--max-depth", "2",
-                         "--max-pending", "20", "--max-urls", "40", "--delay-ms", "250"});
+                         "--max-pending", "20", "--max-urls", "40", "--delay-ms", "250",
+                         "--max-duration-ms", "9000"});
     const auto* command = std::get_if<hfs::CrawlCommand>(&result);
     ASSERT_NE(command, nullptr);
     EXPECT_EQ(command->seeds, (std::vector<std::string>{"https://example.org/start", "http://[::1]/"}));
@@ -39,6 +40,7 @@ TEST(CliArguments, BuildsOwningCanonicalConfigurationWithMultipleSeedsAndHosts)
     EXPECT_EQ(command->options.frontier.max_pending, 20U);
     EXPECT_EQ(command->options.frontier.max_urls, 40U);
     EXPECT_EQ(command->options.timing.interval, std::chrono::milliseconds{250});
+    EXPECT_EQ(command->options.max_duration, std::chrono::milliseconds{9000});
 
     std::string seed{"https://example.org/owned"};
     const auto owned = parse({"crawl", "--seed", seed, "--allow-host", "example.org"});
@@ -67,6 +69,7 @@ TEST(CliArguments, KeepsCrawlDefaultsAndAllowsZeroDepthAndDelay)
     const auto& options = std::get<hfs::CrawlCommand>(defaults).options;
     const hfs::CrawlOptions expected;
     EXPECT_EQ(options.max_pages, expected.max_pages);
+    EXPECT_EQ(options.max_duration, std::chrono::minutes{30});
     EXPECT_EQ(options.timing.interval, expected.timing.interval);
     const auto zero = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
                              "--max-depth", "0", "--delay-ms", "0"});
@@ -122,7 +125,8 @@ TEST(CliArguments, RejectsUrlsPortsCredentialsAndControlCharactersAsHosts)
 
 TEST(CliArguments, RejectsMalformedOverflowingOrRepeatedNumericOptions)
 {
-    for (const auto* option : {"--max-pages", "--max-targets", "--max-depth", "--max-pending", "--max-urls", "--delay-ms"}) {
+    for (const auto* option : {"--max-pages", "--max-targets", "--max-depth", "--max-pending", "--max-urls",
+                              "--delay-ms", "--max-duration-ms"}) {
         for (const auto* value : {"", "-1", "+1", " 1", "1 ", "1.5", "1x", "18446744073709551616"}) {
             SCOPED_TRACE(std::string{option} + " " + value);
             EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
@@ -131,7 +135,7 @@ TEST(CliArguments, RejectsMalformedOverflowingOrRepeatedNumericOptions)
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
             "--allow-host", "example.org", option, "1", option, "2"})));
     }
-    for (const auto* option : {"--max-pages", "--max-targets", "--max-pending", "--max-urls"}) {
+    for (const auto* option : {"--max-pages", "--max-targets", "--max-pending", "--max-urls", "--max-duration-ms"}) {
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
             "--allow-host", "example.org", option, "0"})));
     }
@@ -140,13 +144,16 @@ TEST(CliArguments, RejectsMalformedOverflowingOrRepeatedNumericOptions)
         const auto too_large = std::to_string(std::numeric_limits<std::size_t>::max());
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
             "--allow-host", "example.org", "--delay-ms", too_large})));
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+            "--allow-host", "example.org", "--max-duration-ms", too_large})));
     }
 }
 
 TEST(CliArguments, RejectsMissingValuesUnknownFlagsAndPositionalArguments)
 {
     for (const auto& result : {parse({"crawl", "--seed"}), parse({"crawl", "--seed", "--allow-host"}),
-                              parse({"crawl", "--max-pages"}), parse({"crawl", "--unknown", "1"}),
+                              parse({"crawl", "--max-pages"}), parse({"crawl", "--max-duration-ms"}),
+                              parse({"crawl", "--unknown", "1"}),
                               parse({"crawl", "https://example.org/"}), parse({"crawl", "--max-pages=1"})}) {
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(result));
     }

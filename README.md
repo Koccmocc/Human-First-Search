@@ -61,6 +61,7 @@ the entire command before any request occurs.
 | --- | --- | --- |
 | `--max-pages N` | 1000 | Maximum delivered HTML records with distinct text fingerprints |
 | `--max-targets N` | 5000 | Maximum popped queue entries, including failures |
+| `--max-duration-ms N` | 1800000 | Elapsed-time budget before starting another queue target |
 | `--max-depth N` | 3 | Maximum link depth; seeds have depth zero |
 | `--max-pending N` | 1000 | Pending queue capacity |
 | `--max-urls N` | 5000 | Total admitted unique URL budget |
@@ -686,8 +687,29 @@ fingerprints; positive
 duplicates. This target budget does not count individual robots or redirect HTTP
 requests. Each chain retains its existing request limits. `max_redirects` defaults
 to five. `CrawlSummary` reports counts, rejected seeds (including duplicates),
-remaining queue size and a stop reason: empty queue, page limit or target limit.
-An empty queue takes precedence when no work remains at a limit boundary.
+remaining queue size and a stop reason: empty queue, page limit, target limit or
+duration limit.
+An empty queue takes precedence when no work remains at a limit boundary. For a
+nonempty queue, page limit takes precedence over target limit, then duration limit.
+
+`CrawlOptions::max_duration` defaults to 30 minutes and must be positive.
+`steady_now` defaults to `steady_clock::now`; it is separate from the wall clock
+used for `fetched_at` and may be injected with a monotonic clock for tests. The
+budget begins inside `crawl()` before frontier/fetcher setup and seed admission.
+CLI parsing and opening output files happen before that point.
+
+Before each queue pop, the loop checks elapsed time. Once the budget is reached,
+it leaves remaining URLs pending and reports `stop=duration_limit`; this is a
+normal completion with exit 0, and corpus/journal files are closed as usual.
+No event is generated for an unprocessed pending URL. For example,
+`--max-duration-ms 60000` stops scheduling new targets after one minute.
+
+This is a scheduling budget, not cancellation of an in-progress target. Robots
+loading, delays, redirects, parsing, consumer work and observer work for the
+current target complete before the next check. Runtime can exceed the budget by
+that work, and final stream closure takes additional time. Existing per-request
+HTTP timeouts and redirect limits still apply. An empty or throwing `steady_now`
+callback is rejected or propagated; injected clocks must remain monotonic.
 
 Relative links use the final response URL and retain the source's discovery depth
 before adding one for a link. A session processes each validated final URL once.
@@ -699,16 +721,16 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 
 The input gate below validates UTF-8 before extraction. The extractor selects
 semantic content with filtered body fallback. Charset conversion, HTML `base`,
-language detection, per-request logs and a global duration limit remain
+language detection and per-request logs remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Twenty-one GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Twenty-six GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
 failure recovery, encoding rejection, page identities, timestamps, semantic selection,
 empty-text filtering, text deduplication,
-seed rejection and consumer errors.
+seed rejection, duration boundaries/precedence, clock validation and consumer errors.
 No internet is needed.
 
 ### Crawl outcome events
