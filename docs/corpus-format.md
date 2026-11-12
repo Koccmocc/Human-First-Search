@@ -18,7 +18,7 @@ serialization. This contract is provisional until team integration.
 | `text` | Selected semantic content or filtered body fallback; nonempty for crawl output |
 | `text_source` | Selected container: `main`, `article` or `body` |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
-| `language` | `null`: language detection has not been implemented |
+| `language` | `null`: the standalone language detector is not yet integrated with the crawl loop |
 | `fetched_at` | Captured UTC completion time as `YYYY-MM-DDTHH:MM:SSZ`; `null` if no time was captured |
 | `http_status` | HTTP response status, currently `200` for delivered pages |
 | `content_type` | Original response Content-Type value |
@@ -44,7 +44,7 @@ exports used `body-text-v1` and had no `text_source`. New selection can change
 `text_hash` for the same URL, while `page_id` remains URL-based. All-document link
 discovery is independent of the selected text region.
 
-`language` is unknown until language detection is implemented. Each delivered
+`language` remains unknown until the standalone detector is integrated. Each delivered
 page's `fetched_at` is observed with `system_clock` immediately after the fetcher
 returns its final response, before HTML validation, extraction, hashing and the
 consumer. Intermediate redirects do not get separate record timestamps. Formatting

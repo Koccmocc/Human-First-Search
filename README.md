@@ -4,7 +4,7 @@ Local university proof of concept. The C++ crawler supports bounded traversal
 from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
 HTML validation. The CLI prints discovered page URLs and session statistics,
 and can export draft JSONL records with semantic content selection and session
-text deduplication. Content-quality evaluation and language detection remain
+text deduplication. Content-quality evaluation and language filtering remain
 future steps.
 Development is independent of the team's Python/API/UI.
 
@@ -721,7 +721,7 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 
 The input gate below validates UTF-8 before extraction. The extractor selects
 semantic content with filtered body fallback. Charset conversion, HTML `base`,
-language detection and per-request logs remain
+language-based admission and per-request logs remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
@@ -935,15 +935,56 @@ malformed UTF-8. These fixtures establish linkage and basic behavior, rather
 than measured accuracy on a real corpus. Upstream targets pages of roughly 200
 characters or more and cautions about very short or non-prose input.
 
-This increment adds the dependency and compatibility tests. The crawl loop does
-not call the detector yet, and corpus `language` remains `null`. A following
-wrapper will define input bounds and how to report uncertain results before
-English-only admission is enabled. A guessed language alone will not establish
-that a short or unreliable text is English.
+The crawl loop does not call the detector yet, and corpus `language` remains
+`null`. The standalone wrapper below defines bounded input and unknown results;
+English-only admission remains a separate step.
 
 Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 117-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 123-test CTest
 suite passes in both configurations; other operating systems remain unverified.
+
+### Bounded language detection interface
+
+`hfs::detect_language(text)` in `hfs/language.hpp` analyzes extracted plain text.
+Its public types contain no CLD2 or Lexbor types. The result owns its optional
+`code` and exposes a `LanguageStatus`:
+
+| Status | Meaning |
+| --- | --- |
+| `detected` | CLD2 reports a reliable result matching its dominant language |
+| `too_short` | Valid UTF-8 contains fewer than 200 Unicode scalar values |
+| `unreliable` | No reliable, consistent dominant result is available |
+| `invalid_text` | Malformed UTF-8, NUL or text rejected by CLD2's interchange check |
+| `too_large` | Input exceeds 2 MiB; rejected before scanning |
+
+Only `detected` provides a code such as `en`, `de` or `uk`. Other statuses expose
+an absent code and zero `percent`, representing unknown without an English
+fallback. Codes follow CLD2's naming, which includes some three-letter and
+Google-specific codes. `percent` estimates the dominant language's share of
+classified text, not the probability of a correct classification.
+
+The fixed policy is tagged `language_detection_version = "cld2-compact-v1"`.
+Input up to the byte cap is validated and counted with Lexbor's UTF-8 decoder
+before the length check; malformed short text is `invalid_text`. The minimum
+counts Unicode scalar values, including spaces and punctuation, rather than
+bytes, grapheme clusters or letters. CLD2's stricter interchange check runs only
+after the minimum length is met. Input is not repaired, truncated, decoded as
+HTML or biased with URL/HTML-language hints. Dependency/allocation exceptions
+propagate. Thresholds are a conservative initial policy, not a corpus-quality
+benchmark or an English admission decision.
+
+```cpp
+#include "hfs/language.hpp"
+
+const auto result = hfs::detect_language(extracted_text);
+const auto language = result.code.value_or("unknown");
+```
+
+Six wrapper tests cover owning results, English and non-English detection,
+Unicode length boundaries, malformed UTF-8/NUL, non-prose and the byte limit,
+including corruption at the end of a maximum-sized buffer. The wrapper is
+independent of the crawl loop; JSONL corpus output remains unchanged until it
+is integrated with admission and logging.
