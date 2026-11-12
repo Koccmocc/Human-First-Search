@@ -909,3 +909,41 @@ extracted text from different markup. The local crawl test checks identities
 across redirect aliases and separate sessions. The CLI prints URLs and optionally
 exports JSONL records. The crawl loop uses these text fingerprints for session
 deduplication as described above.
+
+### Language detector compatibility baseline
+
+The build now provides static target `hfs_cld2` from
+[CLD2](https://github.com/CLD2Owners/cld2), pinned to commit
+`b56fa78a2fe44ac2851bae5bf4f4693a0644da7b` (2015-08-20), under
+[Apache-2.0](https://github.com/CLD2Owners/cld2/blob/b56fa78a2fe44ac2851bae5bf4f4693a0644da7b/LICENSE).
+This is an older statistical model selected for its self-contained C++ build.
+The compact model's tables are compiled into the static library, with no
+Protobuf dependency, runtime model download or additional DLL for this detector.
+
+`cmake/LanguageDetector.cmake` follows the compact source list in upstream
+`internal/compile_libs.sh`. POSIX tools, dynamic-table loading and the alternative
+larger model are excluded. Unmodified upstream sources compile as C++20. Their
+legacy unsigned table initializers require GCC's `-Wno-narrowing`, applied only
+to `hfs_cld2`; our targets retain their existing warnings. Headers are system
+includes, matching the treatment of other dependencies.
+
+The compatibility tests call `ExtDetectLanguageSummaryCheckUTF8()` with plain
+text, neutral hints and zero flags. This checked extended API reports malformed
+UTF-8 and avoids the legacy API's forced-English fallback. Six scenarios cover
+English, German, Ukrainian UTF-8, Japanese CJK tables, empty/ambiguous text and
+malformed UTF-8. These fixtures establish linkage and basic behavior, rather
+than measured accuracy on a real corpus. Upstream targets pages of roughly 200
+characters or more and cautions about very short or non-prose input.
+
+This increment adds the dependency and compatibility tests. The crawl loop does
+not call the detector yet, and corpus `language` remains `null`. A following
+wrapper will define input bounds and how to report uncertain results before
+English-only admission is enabled. A guessed language alone will not establish
+that a short or unreliable text is English.
+
+Development builds can use a local checkout of the pinned commit via
+`-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
+remain under ignored build directories. Debug/Release checks on MinGW used this
+override. An isolated CMake configure also verified automatic FetchContent
+retrieval of the pinned commit without the CLD2 override. The full 117-test CTest
+suite passes in both configurations; other operating systems remain unverified.

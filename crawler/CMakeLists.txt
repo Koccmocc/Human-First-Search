@@ -7,6 +7,7 @@ target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/incl
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
 target_link_libraries(crawler_core PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(crawler_core PRIVATE hfs_cld2)
 if(WIN32)
     # SHA-256 uses the operating system provider, without an extra runtime DLL.
     target_link_libraries(crawler_core PRIVATE bcrypt)
@@ -30,6 +31,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(cld2_test tests/cld2_test.cpp)
+    target_link_libraries(cld2_test PRIVATE hfs_cld2 GTest::gtest_main)
+    target_compile_options(cld2_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(cld2_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(jsonl_test tests/jsonl_test.cpp tests/crawl_log_test.cpp)
     target_link_libraries(jsonl_test PRIVATE crawler_core GTest::gtest_main nlohmann_json::nlohmann_json)
     target_compile_options(jsonl_test PRIVATE -Wall -Wextra -Wpedantic)
