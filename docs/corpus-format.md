@@ -10,13 +10,13 @@ serialization. This contract is provisional until team integration.
 | Field | Current meaning |
 | --- | --- |
 | `schema_version` | Integer `1` |
-| `extractor_version` | `semantic-text-v1`: current `HtmlDocument::main_text()` rules |
+| `extractor_version` | `semantic-text-v2`: current `HtmlDocument::main_text()` rules |
 | `url_normalization_version` | `lexbor-url-v1`: current HTTP(S) URL resolution/serialization rules |
 | `page_id` | `sha256:` plus the SHA-256 of the canonical final URL |
 | `url` | Canonical final HTTP(S) URL, without fragment |
 | `title` | Extracted title; may be empty |
 | `text` | Selected semantic content or filtered body fallback; nonempty for crawl output |
-| `text_source` | Selected container: `main`, `article` or `body` |
+| `text_source` | Selected container: `main`, `article`, `main_role` or `body` |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
 | `language` | Detected CLD2 code, normally `en`; `null` for unknown text admitted in diagnostic mode or absent analysis |
 | `language_percent` | Dominant-language share of classified text; `null` if no code is available |
@@ -33,18 +33,24 @@ belongs to extraction; hashing and serialization do not additionally normalize
 Unicode or whitespace. Bump the corresponding version tag when extraction or
 URL normalization rules change.
 
-`semantic-text-v1` chooses the first nonempty HTML `main`, otherwise the first
-nonempty HTML `article`, otherwise body fallback. It skips script/style/template,
+`semantic-text-v2` chooses the first nonempty HTML `main`, otherwise the first
+nonempty HTML `article`, otherwise the first nonempty HTML element with exact
+`role="main"`, otherwise body fallback. The role branch reports `main_role`.
+It trims HTML ASCII whitespace and accepts only the single lowercase role;
+role lists and broader ARIA role resolution are not implemented.
+It skips script/style/template,
 nav/aside/footer and `hidden` subtrees; normalization retains the original body
 whitespace/entity rules. Content headers are retained. Container emptiness is
 checked after filtering. Only HTML-namespace containers qualify.
 
 `text_source` exposes the chosen branch. The source `body` still applies the
 semantic skip rules and can retain unmarked site chrome. This is a tag-based
-heuristic without CSS, ARIA-role handling or content-quality scoring. Earlier
+heuristic without CSS, general ARIA-role resolution or content-quality scoring. Earlier
 exports used `body-text-v1` and had no `text_source`. New selection can change
 `text_hash` for the same URL, while `page_id` remains URL-based. All-document link
-discovery is independent of the selected text region.
+discovery is independent of the selected text region. `semantic-text-v1` used
+main/article/body only; v2 can change text hashes for former body-fallback pages
+while leaving their URL-based IDs unchanged.
 
 Default `--language en` admits only `LanguageStatus::detected` with code `en`.
 Detection uses selected main text with neutral hints. Its fixed bounds are
@@ -98,12 +104,12 @@ still enter the frontier under normal policy and limits. Empty pages use the
 target budget but not the delivered-page budget. An all-empty session creates
 an empty JSONL file and completes normally.
 
-This admission check does not change `semantic-text-v1` extraction or the schema.
+Empty-text admission itself does not change extraction rules or the schema.
 The standalone serializer can still write an empty text supplied by its caller;
 earlier crawl exports may contain one empty-text representative. Short nonempty
-texts remain eligible, and unmarked boilerplate may remain in selected text.
-This export is an intermediate data format before content-quality evaluation,
-language filtering and the final reproducibility manifest are complete. Detailed
+texts remain eligible in diagnostic any-language mode. Unmarked boilerplate may
+remain in selected text. This export is an intermediate data format before
+real-site content-quality evaluation and the final reproducibility manifest are complete. Detailed
 mapping from skipped URLs to their representatives remains a future journal extension.
 
 `write_page_jsonl(output, page)` accepts a page produced by the crawl loop. It

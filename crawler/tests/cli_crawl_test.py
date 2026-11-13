@@ -46,6 +46,8 @@ class CliCrawl(unittest.TestCase):
             page = records[0]
             self.assertEqual(page["url"], BASE + "/language/english")
             self.assertEqual(page["language"], "en")
+            self.assertEqual(page["text_source"], "main_role")
+            self.assertNotIn("Site controls", page["text"])
             self.assertGreaterEqual(page["language_percent"], 90)
             self.assertEqual(page["language_detection_version"], "cld2-compact-v1")
             self.assertEqual(page["text_hash"], "sha256:" + hashlib.sha256(page["text"].encode()).hexdigest())
@@ -158,7 +160,7 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["title"], 'Export "title" \\ caf\u00e9')
             self.assertEqual(record["text"], expected_text)
             self.assertEqual(record["schema_version"], 1)
-            self.assertEqual(record["extractor_version"], "semantic-text-v1")
+            self.assertEqual(record["extractor_version"], "semantic-text-v2")
             self.assertEqual(record["text_source"], "body")
             self.assertEqual(record["url_normalization_version"], "lexbor-url-v1")
             self.assertEqual(record["requested_urls"], [BASE + "/crawl/export-alias", record["url"]])
@@ -222,7 +224,7 @@ class CliCrawl(unittest.TestCase):
                              [BASE + path for path in ("/content/page", "/content/outside", "/content/copy-child")])
             expected_text = "Heading\nCaf\u00e9 & tea"
             self.assertEqual(records[0]["text"], expected_text)
-            self.assertEqual(records[0]["extractor_version"], "semantic-text-v1")
+            self.assertEqual(records[0]["extractor_version"], "semantic-text-v2")
             self.assertEqual([record["text_source"] for record in records], ["article", "main", "body"])
             self.assertEqual(records[0]["text_hash"], "sha256:" + hashlib.sha256(expected_text.encode()).hexdigest())
             self.assertEqual(records[0]["page_id"], "sha256:" + hashlib.sha256(records[0]["url"].encode()).hexdigest())

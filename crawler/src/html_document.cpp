@@ -125,14 +125,43 @@ auto extract_text(lxb_dom_node_t* root, bool semantic) -> std::string
     return output.value;
 }
 
-auto select_text(lxb_dom_node_t* root, std::uintptr_t tag, HtmlTextSource source)
+auto has_main_role(lxb_dom_node_t* node) -> bool
+{
+    std::size_t length{};
+    const auto* value = lxb_dom_element_get_attribute(lxb_dom_interface_element(node),
+        reinterpret_cast<const lxb_char_t*>("role"), 4, &length);
+    if (value == nullptr) {
+        return false;
+    }
+    const std::string_view role{reinterpret_cast<const char*>(value), length};
+    constexpr std::string_view whitespace{" \t\n\r\f"};
+    const auto first = role.find_first_not_of(whitespace);
+    if (first == std::string_view::npos) {
+        return false;
+    }
+    // Limit this heuristic to an exact single role; lists need full ARIA role resolution.
+    return role.substr(first, role.find_last_not_of(whitespace) - first + 1) == "main";
+}
+
+auto matches_source(lxb_dom_node_t* node, HtmlTextSource source) -> bool
+{
+    switch (source) {
+    case HtmlTextSource::main: return node->local_name == LXB_TAG_MAIN;
+    case HtmlTextSource::article: return node->local_name == LXB_TAG_ARTICLE;
+    case HtmlTextSource::main_role: return has_main_role(node);
+    case HtmlTextSource::body: return false;
+    }
+    return false;
+}
+
+auto select_text(lxb_dom_node_t* root, HtmlTextSource source)
     -> std::optional<HtmlText>
 {
     auto* node = root->first_child;
     while (node != nullptr) {
         bool descend = !skip_text(node, true);
         if (descend && node->type == LXB_DOM_NODE_TYPE_ELEMENT &&
-            node->ns == LXB_NS_HTML && node->local_name == tag) {
+            node->ns == LXB_NS_HTML && matches_source(node, source)) {
             auto text = extract_text(node, true);
             if (!text.empty()) {
                 return HtmlText{std::move(text), source};
@@ -218,10 +247,19 @@ auto HtmlDocument::main_text() const -> HtmlText
     if (body == nullptr || skip_text(body, true)) {
         return {};
     }
-    if (auto selected = select_text(body, LXB_TAG_MAIN, HtmlTextSource::main)) {
+    if (auto selected = select_text(body, HtmlTextSource::main)) {
         return std::move(*selected);
     }
-    if (auto selected = select_text(body, LXB_TAG_ARTICLE, HtmlTextSource::article)) {
+    if (auto selected = select_text(body, HtmlTextSource::article)) {
+        return std::move(*selected);
+    }
+    if (has_main_role(body)) {
+        auto text = extract_text(body, true);
+        if (!text.empty()) {
+            return HtmlText{std::move(text), HtmlTextSource::main_role};
+        }
+    }
+    if (auto selected = select_text(body, HtmlTextSource::main_role)) {
         return std::move(*selected);
     }
     return HtmlText{extract_text(body, true), HtmlTextSource::body};

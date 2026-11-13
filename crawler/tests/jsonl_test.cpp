@@ -38,7 +38,7 @@ TEST(Jsonl, SerializesPageFieldsCapturedTimeAndUnknownLanguage)
     hfs::write_page_jsonl(output, page);
     const auto record = nlohmann::json::parse(output.str());
     EXPECT_EQ(record.at("schema_version"), 1);
-    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v1");
+    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v2");
     EXPECT_EQ(record.at("text_source"), "body");
     EXPECT_EQ(record.at("url_normalization_version"), "lexbor-url-v1");
     EXPECT_EQ(record.at("url"), page.url);
@@ -54,6 +54,17 @@ TEST(Jsonl, SerializesPageFieldsCapturedTimeAndUnknownLanguage)
     EXPECT_TRUE(record.at("language_percent").is_null());
     EXPECT_TRUE(record.at("language_detection_version").is_null());
     EXPECT_EQ(record.at("fetched_at"), "2026-11-09T12:34:56Z");
+}
+
+TEST(Jsonl, SerializesMainRoleSourceWithUpdatedExtractorVersion)
+{
+    auto page = sample_page();
+    page.text_source = hfs::HtmlTextSource::main_role;
+    std::ostringstream output;
+    hfs::write_page_jsonl(output, page);
+    const auto record = nlohmann::json::parse(output.str());
+    EXPECT_EQ(record.at("text_source"), "main_role");
+    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v2");
 }
 
 TEST(Jsonl, PreservesDetectedAndUnknownLanguageMetadata)

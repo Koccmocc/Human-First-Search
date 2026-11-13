@@ -38,6 +38,8 @@ TEST_F(Crawl, EnglishAdmissionRejectsOtherAndUnknownTextButDiscoversItsLinks)
                               base + "/language/short", base + "/language/numbers"});
     ASSERT_EQ(pages.size(), 2U);
     EXPECT_EQ(pages[0].url, base + "/language/english");
+    EXPECT_EQ(pages[0].text_source, hfs::HtmlTextSource::main_role);
+    EXPECT_EQ(pages[0].text.find("Site controls"), std::string::npos);
     EXPECT_EQ(pages[1].url, base + "/language/english-two");
     for (const auto& page : pages) {
         EXPECT_EQ(page.depth, 1U);

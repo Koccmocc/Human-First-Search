@@ -164,6 +164,54 @@ TEST(HtmlDocument, MainTextFallsBackToFirstNonemptyArticle)
     EXPECT_EQ(selected.text, "Article heading\nCaf\xC3\xA9 & tea\nByline");
 }
 
+TEST(HtmlDocument, MainRoleSelectsContentWithoutOuterSiteChrome)
+{
+    const hfs::HtmlDocument document{
+        "<header>Site controls</header><p>Service notice</p>"
+        "<section role=' \tmain\n'><h1>Heading</h1><p>Main content</p>"
+        "<nav>Menu</nav><aside>Advert</aside><p hidden>Hidden</p></section>"
+        "<footer>Site footer</footer>"};
+    const auto selected = document.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::main_role);
+    EXPECT_EQ(selected.text, "Heading\nMain content");
+    EXPECT_NE(document.body_text().find("Site controls"), std::string::npos);
+}
+
+TEST(HtmlDocument, MainRolePreservesNativeMainAndArticlePriority)
+{
+    const hfs::HtmlDocument with_main{
+        "<section role=main>Role content</section><article>Article</article><main>Native main</main>"};
+    EXPECT_EQ(with_main.main_text().source, hfs::HtmlTextSource::main);
+    EXPECT_EQ(with_main.main_text().text, "Native main");
+    const hfs::HtmlDocument with_article{
+        "<section role=main>Role content</section><main> </main><article>Article</article>"};
+    EXPECT_EQ(with_article.main_text().source, hfs::HtmlTextSource::article);
+    EXPECT_EQ(with_article.main_text().text, "Article");
+}
+
+TEST(HtmlDocument, MainRoleSkipsHiddenInertForeignAndEmptyRegions)
+{
+    const hfs::HtmlDocument document{
+        "<nav><div role=main>Menu candidate</div></nav><div role=main hidden>Hidden</div>"
+        "<template><div role=main>Inert</div></template><svg><g role=main>Foreign</g></svg>"
+        "<div role=main><nav>Only menu</nav></div><section role=main><p>Real text</p></section>"};
+    EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::main_role);
+    EXPECT_EQ(document.main_text().text, "Real text");
+    const hfs::HtmlDocument body_role{"<body role=main><p>Body region</p>"};
+    EXPECT_EQ(body_role.main_text().source, hfs::HtmlTextSource::main_role);
+    EXPECT_EQ(body_role.main_text().text, "Body region");
+    EXPECT_EQ(hfs::HtmlDocument{"<body role=main> "}.main_text().source, hfs::HtmlTextSource::body);
+}
+
+TEST(HtmlDocument, MainRoleDoesNotGuessFromRoleListsOrSimilarValues)
+{
+    for (const auto* role : {"", "MAIN", "mainly", "navigation main", "main navigation", "unknown main"}) {
+        const hfs::HtmlDocument document{"<section role='" + std::string{role} + "'>Fallback text</section>"};
+        EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::body);
+        EXPECT_EQ(document.main_text().text, "Fallback text");
+    }
+}
+
 TEST(HtmlDocument, MainTextUsesFilteredBodyWhenNoUsableContainerExists)
 {
     const hfs::HtmlDocument document{

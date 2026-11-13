@@ -257,12 +257,13 @@ corpus text; this low-level getter retains its original behavior.
 ### Semantic content selection
 
 `HtmlDocument::main_text()` returns owning `HtmlText` with `text` and an
-`HtmlTextSource` value (`main`, `article` or `body`). It chooses the first nonempty
-HTML `main` in DOM order, then the first nonempty HTML `article`, then falls back
-to the body. Emptiness is checked after normalization and filtering. Candidates
+`HtmlTextSource` value (`main`, `article`, `main_role` or `body`). It chooses the
+first nonempty HTML `main`, then the first nonempty HTML `article`, then an HTML
+element with exact `role="main"`, then body fallback. Each scan follows DOM order.
+Emptiness is checked after normalization and filtering. Candidates
 inside ignored subtrees are not considered.
 
-All three paths share the body's whitespace/entity handling, additionally skipping
+All paths share the body's whitespace/entity handling, additionally skipping
 HTML `nav`, `aside`, `footer` and elements with a `hidden` attribute. Headers are
 retained because content headings/bylines often live inside them. Body fallback
 also applies these filters. `body_text()` remains available as the basic body
@@ -270,22 +271,26 @@ extraction primitive with its original skip rules.
 
 The selector walks DOM links iteratively. Empty candidates' subtrees are not
 rescanned for the same tag, keeping deeply nested empty markup from causing
-repeated extraction passes. Only HTML-namespace elements qualify as `main` or
-`article`. Empty and moved-from documents return empty text with source `body`.
+repeated extraction passes. Only HTML-namespace elements qualify. Role matching
+trims HTML ASCII whitespace and requires the single lowercase value `main`.
+Role lists and uppercase values are outside this limited heuristic; this is not
+a full ARIA role resolver. Empty and moved-from documents return empty text with
+source `body`.
 
 The crawl loop hashes and deduplicates the selected text. JSONL labels the policy
-`semantic-text-v1` and records `text_source` so body fallback is visible. Changing
+`semantic-text-v2` and records `text_source` so body fallback is visible. Changing
 selection rules can change `text_hash` while URL-based `page_id` stays stable.
 Link discovery still uses `links()` across the whole document, including outside
 the selected container and on pages skipped as text duplicates.
 
 This is an initial semantic-tag heuristic. It selects the first usable container
 without scoring article quality or size. CSS visibility, class-name heuristics,
-ARIA landmarks and JavaScript rendering are not evaluated. Unmarked boilerplate
+other ARIA semantics and JavaScript rendering are not evaluated. Unmarked boilerplate
 can remain, especially on body fallback, which also retains a site's header.
-Quality on real sites still needs evaluation.
+The [first live pilot](docs/live-pilot-2026-11-13.md) found and verified the
+role-main fallback on Python.org. Broader real-site quality evaluation remains.
 
-Six unit scenarios cover priorities, empty/hidden/inert/foreign candidates,
+Ten unit scenarios cover priorities, empty/hidden/inert/foreign candidates, role-main selection,
 filtered fallback, headings, deep nesting, moves and owning results. Local crawl
 and Python JSONL checks verify content-based hashes/deduplication while navigation
 links outside the chosen container still lead to new pages.
@@ -358,7 +363,8 @@ client explicitly restricts transfers to HTTP(S) and disables automatic redirect
 On Windows TLS uses Schannel and the system certificate store. On other platforms
 the configuration selects OpenSSL, requiring matching development headers and
 libraries; that path has not been tested here. The client explicitly enables
-certificate and hostname verification; a live TLS connection has not yet been tested.
+certificate and hostname verification. The [live pilot](docs/live-pilot-2026-11-13.md)
+verified real HTTPS requests with the Windows Schannel build.
 
 The dependency uses the [curl license](https://github.com/curl/curl/blob/3163ec065643ba20709f190111f42c3e1fe95273/COPYING).
 Preserve its copyright and permission notice when distributing copies.
@@ -944,7 +950,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 126-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 131-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface
