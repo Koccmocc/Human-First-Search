@@ -95,6 +95,10 @@ if(BUILD_TESTING)
     gtest_discover_tests(robots_parser_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
 
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME crawler.verify_run COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_run_test.py")
+    set_tests_properties(crawler.verify_run PROPERTIES TIMEOUT 15)
+
     add_test(NAME crawler.cli_crawl COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/http_fixture.py" "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_crawl_test.py" "$<TARGET_FILE:hfs-crawler>")

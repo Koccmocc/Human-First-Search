@@ -97,3 +97,21 @@ responses and boilerplate inside selected regions before expanding the corpus.
 
 The same settings are now saved in `config/pilot.json`; see
 [configuration usage](crawl-config.md) for repeating them with `--config`.
+
+## Saved-run verification follow-up
+
+A subsequent Release run used `config/pilot.json` with fresh corpus, journal and
+`--manifest` destinations. It again stopped at `page_limit`: 8 pages, 8 targets,
+no fetch failures or skipped/empty/duplicate/language-rejected pages, and 92
+pending URLs. `tools/verify_run.py` accepted the saved run independently:
+
+| Artifact | Records | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| Corpus | 8 | 26383 | `c138e2b308648e6f6f7b2f8cf2afc38fce4d079ff43879697afbf7f3a96d5b5a` |
+| Journal | 8 | 2534 | `fef3b6ca86a635ce4cd8a22b2851c0b667e9277188de8503a8b09b52e0b825f5` |
+
+The verifier checked exact file fingerprints, JSONL records and all journal
+outcome counts against the manifest. This repeats the same small scope and does
+not expand the earlier content-quality sample. New artifacts remain local under
+ignored `data/`. All 144 CTest entries passed in Debug and Release, including
+seven verifier corruption/portability scenarios and real CLI fixture checks.

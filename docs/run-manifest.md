@@ -68,3 +68,47 @@ compare fingerprints with Python `hashlib`, including a corpus larger than the
 64 KiB read buffer, empty files, absent outputs, config-mode propagation and
 destination errors before HTTP. Existing identity tests retain known SHA-256
 vectors for the shared backend.
+
+## Verify saved artifacts
+
+After a successful crawl, run the independent, read-only verifier:
+
+```powershell
+python tools/verify_run.py data/pilot-run.json
+```
+
+It uses only the Python 3 standard library. It reads the saved corpus and/or
+journal from the manifest's absolute paths, hashes the exact bytes with
+`hashlib`, and compares their sizes and SHA-256 fingerprints. JSONL is read one
+line at a time, so memory depends on the largest record, not the total corpus.
+The manifest itself is read into memory.
+
+Every record must be a UTF-8 JSON object with integer `schema_version: 1` and
+LF termination. BOM, CRLF, blank lines, malformed JSON, duplicate keys and
+non-JSON constants such as `NaN` are rejected. Corpus records must match
+`summary.pages`. Journal records must be `crawl_target` events with known
+outcomes; their total must match `summary.targets`, and every outcome count must
+match its summary counter. Outcome counters must also add up to targets.
+
+For files copied to another directory or operating system, override their
+locations while retaining the original sizes and hashes:
+
+```powershell
+python tools/verify_run.py shared/pilot-run.json --corpus shared/pilot-corpus.jsonl --log shared/pilot-log.jsonl
+```
+
+Override paths are relative to the working directory when not absolute. An
+override for an artifact recorded as `null` is an error. A manifest with no saved
+artifacts is also rejected because there are no files to verify. An empty saved
+corpus remains valid when the recorded size, hash and page count agree.
+
+Exit `0` prints one JSON report to stdout with `verified: true` and the checked
+artifacts' record counts, byte counts and hashes. A missing/corrupt file or
+inconsistent manifest exits `1`, with an error on stderr and no success report;
+invalid command syntax exits `2`. No files are created or modified.
+
+This checks integrity and accounting against the supplied manifest. It does not
+validate every corpus field, recompute per-page IDs/text hashes, prove English
+or extraction quality, or establish the manifest's authenticity. Keep files
+unchanged while checking them. The verifier can check a normally finished run
+with fetch failures or zero pages; it does not enforce the final corpus size.

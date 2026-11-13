@@ -124,6 +124,18 @@ rejected before HTTP. Read the manifest after exit `0`; fatal errors can leave
 empty/partial outputs. See the [manifest contract](docs/run-manifest.md) for
 fields, replaying its configuration and remaining reproducibility limits.
 
+Verify saved results independently with the Python standard library:
+
+```powershell
+python tools/verify_run.py data/config-pilot-run.json
+```
+
+The read-only tool checks artifact SHA-256/byte counts, JSONL framing and schema
+versions, record totals and journal outcome counts against the manifest. A
+changed or incomplete result exits 1. Use `--corpus PATH` and `--log PATH` when
+files have moved. This verifies integrity and accounting; content quality still
+needs a separate review. Details are in the manifest contract above.
+
 ## Export JSONL records
 
 Choose a new output file and run from the repository root:
@@ -215,6 +227,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `config/pilot.json`: saved parameters for a small live crawl.
 - `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
 - `docs/run-manifest.md`: run metadata, effective settings and artifact fingerprints.
+- `tools/verify_run.py`: independent, read-only verification of saved run artifacts.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
@@ -980,7 +993,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 143-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 144-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

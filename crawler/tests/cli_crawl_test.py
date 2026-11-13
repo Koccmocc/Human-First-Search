@@ -35,6 +35,13 @@ class CliCrawl(unittest.TestCase):
             capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
 
+    def verify_saved_run(self, manifest):
+        tool = Path(__file__).resolve().parents[2] / "tools" / "verify_run.py"
+        result = subprocess.run([sys.executable, str(tool), str(manifest)],
+                                capture_output=True, text=True, encoding="utf-8", timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
     def test_config_matches_explicit_options_and_writes_selected_destinations(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "crawl config.json"
@@ -62,6 +69,7 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(metadata["configuration"]["seeds"], values["seeds"])
             self.assertEqual(metadata["configuration"]["language"], "en")
             self.assertEqual(metadata["summary"]["pages"], 1)
+            self.verify_saved_run(manifest)
 
     def test_invalid_configs_fail_before_creating_outputs_or_requesting_seeds(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -125,6 +133,7 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["summary"], {key: value if key == "stop" else int(value)
                                                 for key, value in summary.items()})
             self.assertGreater(corpus.stat().st_size, 64 * 1024)
+            self.assertEqual(self.verify_saved_run(manifest)["artifacts"]["corpus"]["records"], 1)
             for key, path in (("corpus", corpus), ("journal", log)):
                 raw = path.read_bytes()
                 self.assertEqual(record["artifacts"][key], {"path": path.resolve().as_posix(),
@@ -152,6 +161,7 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["artifacts"]["corpus"]["sha256"],
                              "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
             self.assertIsNone(record["artifacts"]["journal"])
+            self.assertEqual(self.verify_saved_run(manifest)["artifacts"]["corpus"]["records"], 0)
             only = Path(directory) / "only-manifest.json"
             self.summary(self.run_crawl("--seed", BASE + "/language/english", "--max-depth", "0",
                                         "--manifest", str(only)))
@@ -405,11 +415,14 @@ class CliCrawl(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "crawl log.jsonl"
             corpus = Path(directory) / "corpus.jsonl"
+            manifest = Path(directory) / "run.json"
             paths = ("/crawl/alias", "/crawl/nested/page", "/crawl/alias-two", "/dedup/z", "/dedup/a",
                      "/content/empty", "/crawl/error", "/encoding/broken", "/private/page", "/partial", "/loop-a")
             arguments = [item for path in paths for item in ("--seed", BASE + path)]
-            result = self.run_crawl(*arguments, "--max-depth", "0", "--output", str(corpus), "--log", str(log))
+            result = self.run_crawl(*arguments, "--max-depth", "0", "--output", str(corpus), "--log", str(log),
+                                    "--manifest", str(manifest))
             summary = self.summary(result)
+            self.assertEqual(self.verify_saved_run(manifest)["artifacts"]["journal"]["records"], 11)
             raw = log.read_bytes()
             self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
             self.assertNotIn(b"\r", raw)
