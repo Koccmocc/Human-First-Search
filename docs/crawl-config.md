@@ -10,6 +10,12 @@ The committed pilot config contains the ordered seeds, allowed hosts and limits
 from the first live pilot. Output and log paths are supplied separately so the
 same crawl settings can be reused without reusing existing files.
 
+`config/pilot-five-hosts.json` expands the diagnostic scope to Python, RFC Editor,
+SQLite, PostgreSQL and GNU, with 20 admitted pages and one German negative probe.
+Use fresh output/log/manifest paths. The [five-host report](five-host-pilot-2026-11-13.md)
+records the observed distribution, redirect/language cases and extraction limits;
+this is a diagnostic sample, not the final corpus configuration.
+
 | Key | Type and meaning |
 | --- | --- |
 | `schema_version` | Required integer `1` |

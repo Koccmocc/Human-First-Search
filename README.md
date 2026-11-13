@@ -4,8 +4,8 @@ Local university proof of concept. The C++ crawler supports bounded traversal
 from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
 HTML validation. The CLI prints discovered page URLs and session statistics,
 and can export draft JSONL records with semantic content selection and session
-text deduplication. Reliable English detection is required by default; quality
-evaluation on real sites remains future work.
+text deduplication. Reliable English detection is required by default. Initial
+real-site pilots cover five hosts; broader corpus quality review remains necessary.
 Development is independent of the team's Python/API/UI.
 
 ## Build and run
@@ -136,6 +136,12 @@ changed or incomplete result exits 1. Use `--corpus PATH` and `--log PATH` when
 files have moved. This verifies integrity and accounting; content quality still
 needs a separate review. Details are in the manifest contract above.
 
+For a wider diagnostic sample, use `--config config/pilot-five-hosts.json` with
+fresh output paths. The [five-host pilot report](docs/five-host-pilot-2026-11-13.md)
+records 20 pages, a real redirect duplicate, a German language rejection and
+remaining body-fallback noise on SQLite/PostgreSQL. This is not a balanced or
+final corpus; the original two-host `config/pilot.json` stays available.
+
 ## Export JSONL records
 
 Choose a new output file and run from the repository root:
@@ -225,6 +231,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `docs/corpus-format.md`: draft JSONL corpus contract.
 - `docs/crawl-log-format.md`: crawl-event JSONL journal contract.
 - `config/pilot.json`: saved parameters for a small live crawl.
+- `config/pilot-five-hosts.json`: wider diagnostic crawl with a negative language probe.
 - `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
 - `docs/run-manifest.md`: run metadata, effective settings and artifact fingerprints.
 - `tools/verify_run.py`: independent, read-only verification of saved run artifacts.

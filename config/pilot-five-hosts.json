@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "seeds": [
+    "https://www.python.org/about/",
+    "https://www.rfc-editor.org/about/rfc-editor/",
+    "https://www.sqlite.org/about.html",
+    "https://www.postgresql.org/about/",
+    "https://www.gnu.org/gnu/gnu.html",
+    "https://www.python.org/doc/",
+    "https://www.rfc-editor.org/about/",
+    "https://www.sqlite.org/whentouse.html",
+    "https://www.postgresql.org/docs/",
+    "https://www.gnu.org/philosophy/free-sw.html",
+    "https://www.gnu.org/gnu/gnu.de.html"
+  ],
+  "allowed_hosts": [
+    "www.python.org",
+    "www.rfc-editor.org",
+    "www.sqlite.org",
+    "www.postgresql.org",
+    "www.gnu.org"
+  ],
+  "max_pages": 20,
+  "max_targets": 50,
+  "max_depth": 1,
+  "max_pending": 300,
+  "max_urls": 400,
+  "max_duration_ms": 180000,
+  "delay_ms": 1000,
+  "language": "en"
+}
