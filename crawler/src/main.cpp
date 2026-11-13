@@ -1,4 +1,5 @@
 #include "hfs/cli.hpp"
+#include "hfs/config.hpp"
 #include "hfs/crawl_log.hpp"
 #include "hfs/jsonl.hpp"
 
@@ -9,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -59,7 +61,17 @@ auto run(int argc, char* argv[]) -> int
         arguments.emplace_back(argv[index]);
     }
 
-    const auto action = hfs::parse_arguments(arguments);
+    auto action = hfs::parse_arguments(arguments);
+    if (const auto* config = std::get_if<hfs::CrawlConfigCommand>(&action)) {
+        auto loaded = hfs::load_crawl_config(config->path);
+        if (auto* command = std::get_if<hfs::CrawlCommand>(&loaded)) {
+            command->output_path = config->output_path;
+            command->log_path = config->log_path;
+            action = std::move(*command);
+        } else {
+            action = std::move(std::get<hfs::CliError>(loaded));
+        }
+    }
     if (const auto* error = std::get_if<hfs::CliError>(&action)) {
         std::cerr << "error: " << error->message << '\n';
         return 2;

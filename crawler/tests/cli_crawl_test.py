@@ -29,6 +29,66 @@ class CliCrawl(unittest.TestCase):
         self.assertTrue(result.stderr.startswith("crawl: "), result.stderr)
         return dict(item.split("=", 1) for item in result.stderr.removeprefix("crawl: ").split())
 
+    def run_config(self, path, *arguments):
+        return subprocess.run(
+            [CRAWLER, "crawl", "--config", str(path), *arguments],
+            capture_output=True, text=True, encoding="utf-8", timeout=5,
+        )
+
+    def test_config_matches_explicit_options_and_writes_selected_destinations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "crawl config.json"
+            values = {"schema_version": 1, "seeds": [BASE + "/language/german", BASE + "/language/short"],
+                      "allowed_hosts": ["127.0.0.1"], "delay_ms": 0, "max_pages": 1, "language": "en"}
+            config.write_text(json.dumps(values), encoding="utf-8")
+            original = config.read_bytes()
+            corpus = Path(directory) / "configured corpus.jsonl"
+            log = Path(directory) / "configured log.jsonl"
+            configured = self.run_config(config, "--output", str(corpus), "--log", str(log))
+            explicit = self.run_crawl("--seed", BASE + "/language/german", "--seed", BASE + "/language/short",
+                                      "--max-pages", "1", language="en")
+            self.assertEqual(self.summary(configured), self.summary(explicit))
+            self.assertEqual(configured.stdout, explicit.stdout)
+            pages = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
+            events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(pages), 1)
+            self.assertEqual(pages[0]["language"], "en")
+            self.assertEqual([page["url"] for page in pages], configured.stdout.splitlines())
+            self.assertEqual(len(events), 3)
+            self.assertEqual(config.read_bytes(), original)
+
+    def test_invalid_configs_fail_before_creating_outputs_or_requesting_seeds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "invalid.json"
+            corpus = Path(directory) / "never-created.jsonl"
+            log = Path(directory) / "never-created-log.jsonl"
+            valid = {"schema_version": 1, "seeds": [BASE + "/must-not-follow"], "allowed_hosts": ["127.0.0.1"]}
+            cases = ["broken", json.dumps(dict(valid, schema_version=2)), json.dumps(dict(valid, max_pages=0)),
+                     json.dumps(dict(valid, allowed_hosts=["outside.invalid"])), json.dumps(dict(valid, language="de")),
+                     json.dumps(dict(valid, max_pgaes=2)), '{"schema_version":1,' + json.dumps(valid)[1:]]
+            for body in cases:
+                with self.subTest(body=body):
+                    config.write_text(body, encoding="utf-8")
+                    result = self.run_config(config, "--output", str(corpus), "--log", str(log))
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertFalse(corpus.exists())
+                    self.assertFalse(log.exists())
+
+    def test_config_file_failures_and_output_collision_preserve_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.json"
+            config.write_bytes(b" " * (64 * 1024 + 1))
+            for path in (config, Path(directory) / "missing.json", Path(directory)):
+                self.assertEqual(self.run_config(path).returncode, 2)
+            config.write_text(json.dumps({"schema_version": 1, "seeds": [BASE + "/must-not-follow"],
+                                         "allowed_hosts": ["127.0.0.1"]}), encoding="utf-8")
+            original = config.read_bytes()
+            result = self.run_config(config, "--output", str(config))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(config.read_bytes(), original)
+
     def fetch_time(self, record):
         self.assertRegex(record["fetched_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         return datetime.strptime(record["fetched_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)

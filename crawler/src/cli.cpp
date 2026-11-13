@@ -36,8 +36,39 @@ auto canonical_host(std::string_view value) -> std::optional<std::string>
     return hfs::http_url_host("http://" + std::string{value} + "/");
 }
 
+auto parse_config_command(std::span<const std::string_view> arguments) -> hfs::CliResult
+{
+    hfs::CrawlConfigCommand command;
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+        const auto option = arguments[index];
+        if (option != "--config" && option != "--output" && option != "--log") {
+            return hfs::CliError{"With --config, only --output and --log may be supplied"};
+        }
+        if (++index == arguments.size() || arguments[index].starts_with("--") ||
+            arguments[index].empty() || arguments[index].find('\0') != std::string_view::npos) {
+            return hfs::CliError{"Missing or invalid file path for " + std::string{option}};
+        }
+        if (option == "--config") {
+            if (!command.path.empty()) {
+                return hfs::CliError{"--config cannot be repeated"};
+            }
+            command.path = arguments[index];
+        } else {
+            auto& path = option == "--output" ? command.output_path : command.log_path;
+            if (path) {
+                return hfs::CliError{"Duplicate option: " + std::string{option}};
+            }
+            path = arguments[index];
+        }
+    }
+    return command;
+}
+
 auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
 {
+    if (std::find(arguments.begin(), arguments.end(), "--config") != arguments.end()) {
+        return parse_config_command(arguments);
+    }
     hfs::CrawlCommand command;
     struct Limit { std::string_view name; std::size_t* value; bool allow_zero; };
     const std::array limits{
@@ -160,6 +191,7 @@ auto help_text() noexcept -> std::string_view
     return "Human-first Search crawler\n"
            "Usage: hfs-crawler [--help | --version]\n"
            "       hfs-crawler crawl --seed URL --allow-host HOST [options]\n"
+           "       hfs-crawler crawl --config PATH [--output PATH] [--log PATH]\n"
            "\n"
            "Options:\n"
            "  -h, --help  Show this help message.\n"
@@ -178,6 +210,7 @@ auto help_text() noexcept -> std::string_view
            "  --output PATH       Write a new JSONL file; parent directory must exist.\n"
            "  --log PATH          Write a new crawl-event JSONL file.\n"
            "  --language en|any   Admit reliable English by default; any is diagnostic mode.\n"
+           "  --config PATH       Read schema-1 JSON; only output/log options may accompany it.\n"
            "\n"
            "Numbers are unsigned decimal; only depth and delay may be zero.\n"
            "Outputs final page URLs to stdout and a crawl summary to stderr.\n"

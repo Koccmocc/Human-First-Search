@@ -49,7 +49,7 @@ Example of a small live crawl, subject to the site's robots rules:
 ./build/debug/crawler/hfs-crawler.exe crawl --seed https://example.org/ --allow-host example.org --max-pages 5 --max-targets 20 --max-depth 1
 ```
 
-`--seed URL` and `--allow-host HOST` are both required and repeatable. Seeds must
+Without `--config`, `--seed URL` and `--allow-host HOST` are both required and repeatable. Seeds must
 be absolute HTTP(S) URLs without credentials. Hosts contain no scheme, path or
 port; bracketed IPv6 is accepted. Host names and seeds are canonicalized using
 the existing URL module. Repeated host names are collapsed. Subdomains require
@@ -96,6 +96,25 @@ Argument unit tests cover canonicalization, ownership, numeric boundaries and
 invalid inputs. `crawler.cli_crawl` uses the real executable against the local
 fixture to verify discovery, limits, validation before requests and failed-page
 statistics. It needs no internet.
+
+## Run from a saved configuration
+
+`config/pilot.json` stores the first live pilot's ordered seeds, allowed hosts and
+limits. Choose new output files to repeat those parameters:
+
+```powershell
+./build/release/crawler/hfs-crawler.exe crawl --config config/pilot.json --output data/config-pilot-corpus.jsonl --log data/config-pilot-log.jsonl
+```
+
+Create the output directory first. With `--config`, only `--output` and `--log`
+may be added; direct seed, host and limit options cannot be mixed with it. File
+parameters use the same URL/scope/numeric validation as direct CLI mode. Unknown
+or duplicate keys, wrong types and files over 64 KiB are rejected before output
+creation or requests. Config errors exit 2. The source file is read-only.
+
+The [configuration contract](docs/crawl-config.md) lists supported keys and
+defaults. Saved settings are the first step toward reproducible runs; they do
+not replace a content snapshot or the future run manifest.
 
 ## Export JSONL records
 
@@ -185,6 +204,8 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `crawler/tests/cli_crawl_test.py`: local crawl checks against the built executable.
 - `docs/corpus-format.md`: draft JSONL corpus contract.
 - `docs/crawl-log-format.md`: crawl-event JSONL journal contract.
+- `config/pilot.json`: saved parameters for a small live crawl.
+- `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
@@ -950,7 +971,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 131-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 138-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

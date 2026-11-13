@@ -94,3 +94,6 @@ Live content and fetched_at values can change. The hashes identify these local
 artifacts; this pilot does not yet supply the final reproducibility manifest.
 Broader sampling should inspect mixed-language pages, other layouts, short/failed
 responses and boilerplate inside selected regions before expanding the corpus.
+
+The same settings are now saved in `config/pilot.json`; see
+[configuration usage](crawl-config.md) for repeating them with `--config`.

@@ -116,6 +116,25 @@ TEST(CliArguments, OwnsOptionalLogPathAndRejectsInvalidOrRepeatedLogArguments)
         "--allow-host", "example.org", "--log", "one.jsonl", "--log", "two.jsonl"})));
 }
 
+TEST(CliArguments, ParsesAnOwningConfigRequestWithoutOpeningFiles)
+{
+    std::string path{"not opened config.json"};
+    const auto result = parse({"crawl", "--output", "corpus.jsonl", "--config", path, "--log", "log.jsonl"});
+    path.assign("released");
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlConfigCommand>(result));
+    const auto& command = std::get<hfs::CrawlConfigCommand>(result);
+    EXPECT_EQ(command.path, "not opened config.json");
+    EXPECT_EQ(command.output_path, "corpus.jsonl");
+    EXPECT_EQ(command.log_path, "log.jsonl");
+    for (const auto& invalid : {parse({"crawl", "--config"}), parse({"crawl", "--config", ""}),
+                                parse({"crawl", "--config", "one", "--config", "two"}),
+                                parse({"crawl", "--config", "one", "--max-pages", "2"}),
+                                parse({"crawl", "--seed", "https://example.org/", "--config", "one"}),
+                                parse({"crawl", "--config", "one", "--output", "a", "--output", "b"})}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(invalid));
+    }
+}
+
 TEST(CliArguments, RequiresExplicitSeedsAndScopeAndChecksEverySeed)
 {
     for (const auto& result : {parse({"crawl"}), parse({"crawl", "--seed", "https://example.org/"}),

@@ -24,8 +24,14 @@ struct CrawlCommand {
     std::optional<std::string> log_path;
 };
 
+struct CrawlConfigCommand {
+    std::string path;
+    std::optional<std::string> output_path;
+    std::optional<std::string> log_path;
+};
+
 // Parsed commands and errors own their strings; argv can be released afterwards.
-using CliResult = std::variant<CliAction, CrawlCommand, CliError>;
+using CliResult = std::variant<CliAction, CrawlCommand, CrawlConfigCommand, CliError>;
 
 // Views are borrowed only for this call. Validation performs no network requests.
 [[nodiscard]] auto parse_arguments(std::span<const std::string_view> arguments)
