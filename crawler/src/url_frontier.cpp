@@ -1,6 +1,7 @@
 #include "hfs/url_frontier.hpp"
 #include "hfs/url.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -45,18 +46,41 @@ auto UrlFrontier::enqueue(std::string_view base, std::string_view reference,
     if (known_.size() == limits_.max_urls) {
         return EnqueueResult::url_limit;
     }
-    if (pending_.size() == limits_.max_pending) {
+    if (pending_count_ == limits_.max_pending) {
         return EnqueueResult::queue_full;
     }
 
-    pending_.push_back(CrawlTarget{*url, depth});
+    const auto host = http_url_host(*url);
+    if (!host) {
+        return EnqueueResult::invalid_url;
+    }
+    const auto known = known_.insert(*url).first;
     try {
-        known_.insert(std::move(*url));
+        const auto [level, created] = pending_.try_emplace(depth);
+        try {
+            auto& hosts_at_depth = level->second;
+            const auto queue = std::find_if(hosts_at_depth.begin(), hosts_at_depth.end(),
+                [&host](const auto& item) { return item.host == *host; });
+            if (queue != hosts_at_depth.end()) {
+                queue->targets.push_back(CrawlTarget{std::move(*url), depth});
+            } else {
+                // Construct a complete queue before publishing a new host into the ring.
+                HostQueue added{*host, {}};
+                added.targets.push_back(CrawlTarget{std::move(*url), depth});
+                hosts_at_depth.push_back(std::move(added));
+            }
+        } catch (...) {
+            if (created) {
+                pending_.erase(level);
+            }
+            throw;
+        }
     } catch (...) {
-        // Roll back admission if allocating deduplication storage fails.
-        pending_.pop_back();
+        // Failed allocation must not consume the URL budget or mark a candidate known.
+        known_.erase(known);
         throw;
     }
+    ++pending_count_;
     return EnqueueResult::added;
 }
 
@@ -65,14 +89,26 @@ auto UrlFrontier::pop() -> std::optional<CrawlTarget>
     if (pending_.empty()) {
         return std::nullopt;
     }
-    auto next = std::move(pending_.front());
-    pending_.pop_front();
+    const auto level = pending_.begin(); // Every shallower pending target goes first.
+    auto& hosts_at_depth = level->second;
+    auto& targets = hosts_at_depth.front().targets;
+    auto next = std::move(targets.front());
+    targets.pop_front();
+    --pending_count_;
+    if (targets.empty()) {
+        hosts_at_depth.pop_front();
+        if (hosts_at_depth.empty()) {
+            pending_.erase(level);
+        }
+    } else {
+        hosts_at_depth.splice(hosts_at_depth.end(), hosts_at_depth, hosts_at_depth.begin());
+    }
     return next;
 }
 
 auto UrlFrontier::size() const noexcept -> std::size_t
 {
-    return pending_.size();
+    return pending_count_;
 }
 
 auto UrlFrontier::accepted_count() const noexcept -> std::size_t

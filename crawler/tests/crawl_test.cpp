@@ -141,6 +141,35 @@ TEST_F(Crawl, DiscoversLinksInBreadthFirstOrderUnderRobotsAndScopePolicy)
     EXPECT_EQ(summary.pending_urls, 0U);
 }
 
+TEST_F(Crawl, RoundRobinsTwoHostsAtEachDepthDespiteUnequalLinkCounts)
+{
+    std::string other = base;
+    other.replace(other.find("127.0.0.1"), std::string{"127.0.0.1"}.size(), "localhost");
+    options.max_pages = 6;
+    options.frontier.max_depth = 1;
+    std::vector<hfs::CrawlEvent> events;
+    options.on_event = [&](const auto& event) { events.push_back(event); };
+    const std::vector<std::string> seeds{base + "/balance/a-root", other + "/balance/b-root"};
+    const auto summary = hfs::crawl(seeds, {"127.0.0.1", "localhost"}, collect, options);
+    const std::vector<std::string> expected{
+        base + "/balance/a-root", other + "/balance/b-root",
+        base + "/balance/a/1", other + "/balance/b/1",
+        base + "/balance/a/2", other + "/balance/b/2"};
+    ASSERT_EQ(pages.size(), expected.size());
+    ASSERT_EQ(events.size(), expected.size());
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        EXPECT_EQ(pages[index].url, expected[index]);
+        EXPECT_EQ(pages[index].depth, index < 2 ? 0U : 1U);
+        EXPECT_EQ(events[index].target.url, expected[index]);
+        EXPECT_EQ(events[index].outcome, hfs::CrawlOutcome::page_delivered);
+    }
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::page_limit);
+    EXPECT_EQ(summary.pages, 6U);
+    EXPECT_EQ(summary.targets_processed, 6U);
+    EXPECT_EQ(summary.fetch_failures, 0U);
+    EXPECT_EQ(summary.pending_urls, 11U); // 12 + 3 discovered children, four processed.
+}
+
 TEST_F(Crawl, ResolvesLinksAtFinalUrlAndEmitsRedirectDestinationsOnce)
 {
     const auto summary = run({base + "/crawl/alias", base + "/crawl/nested/page",

@@ -138,9 +138,11 @@ needs a separate review. Details are in the manifest contract above.
 
 For a wider diagnostic sample, use `--config config/pilot-five-hosts.json` with
 fresh output paths. The [five-host pilot report](docs/five-host-pilot-2026-11-13.md)
-records 20 pages, a real redirect duplicate, a German language rejection and
-remaining body-fallback noise on SQLite/PostgreSQL. This is not a balanced or
-final corpus; the original two-host `config/pilot.json` stays available.
+records the initial 20-page sample, a redirect duplicate, a German language
+rejection and body-fallback noise on SQLite/PostgreSQL. The later
+[host scheduling review](docs/frontier-scheduling.md) records the improved
+5/3/5/4/3 distribution under the same config. These remain diagnostic samples;
+the original two-host `config/pilot.json` stays available.
 
 ## Export JSONL records
 
@@ -692,11 +694,20 @@ tests configure zero delay, while this timing scenario advances a simulated cloc
 
 ### Bounded URL frontier
 
-`UrlFrontier` owns canonical allowed host names, a FIFO of `CrawlTarget` values
+`UrlFrontier` owns canonical allowed host names, pending `CrawlTarget` values
 and the set of URLs accepted during the session. `add_seed(url)` assigns depth
 zero. `add_link(parent, reference)` resolves the reference against the parent URL
 and assigns the next depth. Both paths use our URL normalization and host checks.
 `pop()` returns an owning target or `std::nullopt` when the queue is empty.
+
+The default policy is `depth-host-round-robin-v1`: pop the smallest pending
+depth, then rotate among its nonempty canonical-host queues. Each host/depth
+keeps FIFO admission order. Hosts initially join in order of first admission;
+a drained host rejoins at the end if more work arrives. Schemes and ports share
+one host queue, while explicitly allowed subdomains remain separate. This keeps
+all seeds before discovered children and prevents one busy host from monopolizing
+attempts among hosts with admitted work at the same depth. See the
+[scheduling contract](docs/frontier-scheduling.md) for examples and limits.
 
 `FrontierLimits` defaults to 1000 pending entries, 5000 accepted unique URLs and
 depth 3. Zero maximum depth admits seeds only. Pending and total limits must be
@@ -708,14 +719,16 @@ tracked separately by the crawl loop.
 depth limit, full queue or exhausted total budget. Accepted URLs remain known
 after popping, so links back to processed pages are rejected. Query strings and
 path case keep their URL-module semantics. Capacity rejections leave candidates
-eligible for later admission. Queue admission rolls back if dedup storage allocation
+eligible for later admission. Queue admission rolls back if storage allocation
 fails. `size()` counts pending work and `accepted_count()` counts unique admissions.
 
 The frontier supports a single-threaded session. `PageFetcher` supplies robots,
 HTTP and timing policy when processing a popped entry. The crawl loop joins these
 components with HTML link discovery as described below.
-Seven unit scenarios cover FIFO/depth, session deduplication, both capacity limits,
-depth boundaries/overflow and rejected candidates.
+Thirteen unit scenarios cover host rotation/reactivation, canonical host grouping,
+depth priority, destination-host assignment, session deduplication, both capacity
+limits, depth boundaries/overflow and rejected candidates. A two-host HTTP test
+checks that unequal link counts still alternate within a depth.
 
 ### Bounded crawl loop
 
@@ -873,9 +886,11 @@ fingerprints are retained for this index, so the loop does not accumulate corpus
 texts. Each call to `crawl()` starts a fresh index.
 
 The representative is the first encountered page under the supplied seed order,
-FIFO processing and DOM link order. The choice is repeatable for the same ordered
-configuration and fetch outcomes. Changing seed order can select a different URL,
-title and metadata while preserving the group's `text_hash`. No additional text
+depth/host scheduling policy and DOM link order. The choice is repeatable for the
+same ordered configuration and fetch outcomes. Changing seed order or scheduling
+can select a different URL, title and metadata while preserving the group's
+`text_hash`. The policy version is recorded in the run manifest's
+`processing.frontier` field. No additional text
 normalization is applied beyond extraction; changed case or Unicode bytes remain
 distinct. Empty extracted texts are rejected before this index is consulted.
 
@@ -1010,7 +1025,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 152-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 158-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

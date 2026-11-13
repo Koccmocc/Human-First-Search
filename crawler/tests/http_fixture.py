@@ -107,6 +107,13 @@ class Handler(BaseHTTPRequestHandler):
             "/content/copy-child": b'<p>Copy child</p>',
         }
         body = crawl_pages.get(self.path, body)
+        if self.path in ("/balance/a-root", "/balance/b-root"):
+            host = "a" if self.path == "/balance/a-root" else "b"
+            count = 12 if host == "a" else 3
+            body = (f'<main>Host {host} root</main>' + ''.join(
+                f'<a href="/balance/{host}/{index}">Child {index}</a>' for index in range(1, count + 1))).encode()
+        elif self.path.startswith(("/balance/a/", "/balance/b/")):
+            body = f'<p>Unique child {self.path}</p>'.encode()
         language_pages = {
             "/language/english": '<html lang="de"><title>English page</title><header>Site controls</header>'
                                  '<section role="main">' + ENGLISH_TEXT + '</section>',

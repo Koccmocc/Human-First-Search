@@ -29,7 +29,7 @@ The file contains one UTF-8 JSON object followed by LF:
 | `application` | Crawler product name and project version |
 | `build` | GNU compiler and CMake versions, build configuration, `__cplusplus` value |
 | `dependencies` | Compiled curl, Lexbor, nlohmann/json versions and CLD2's model/version description |
-| `processing` | Extractor, URL normalization and language detection rule versions |
+| `processing` | Frontier scheduling, extractor, URL normalization and language detection rule versions |
 | `configuration` | Canonical ordered seeds, hosts, and every effective schema-1 config option, including defaults |
 | `additional_options` | Page/robots HTTP timeouts and body limits, robots cache TTL/retry interval, redirect limit |
 | `timing` | Wall-clock start/finish as Unix milliseconds, elapsed milliseconds measured with a steady clock |
@@ -55,6 +55,11 @@ settings with `--config`. `additional_options` describes library settings that
 are not configurable through that schema. The complete manifest is not itself
 a config file. Absolute artifact paths describe the producing machine and may
 need remapping when sharing files.
+
+`processing.frontier` records the current scheduling policy
+`depth-host-round-robin-v1`. It affects visit order and duplicate representative
+choice, so changing policy can change the corpus even with identical seeds and
+responses. Earlier schema-1 manifests may omit this additive version field.
 
 This records processing versions and verifies artifact identity. It does not
 freeze live web content, store raw responses, identify the source Git revision

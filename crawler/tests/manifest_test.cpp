@@ -49,6 +49,7 @@ TEST(Manifest, RecordsEffectiveDefaultsAndReplayableConfigurationWithSuppliedTim
     EXPECT_TRUE(record["artifacts"]["corpus"].is_null());
     EXPECT_TRUE(record["artifacts"]["journal"].is_null());
     EXPECT_EQ(record["processing"]["extractor"], hfs::html_extractor_version);
+    EXPECT_EQ(record["processing"]["frontier"], hfs::frontier_policy_version);
     EXPECT_EQ(record["processing"]["language_detection"], hfs::language_detection_version);
     EXPECT_EQ(record["build"]["cplusplus"], 202002L);
     EXPECT_FALSE(record["dependencies"]["cld2"].get<std::string>().empty());

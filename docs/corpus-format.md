@@ -103,10 +103,14 @@ saved record remains deterministic, while comparing separate live exports must
 account for `fetched_at`. Page IDs and text hashes remain independent of time.
 
 The crawl loop delivers only the first page per `text_hash` during its session.
-Representative choice follows ordered seeds, FIFO processing and DOM link order;
+Representative choice follows ordered seeds, depth/host scheduling and DOM link order;
 the same configuration and fetch outcomes reproduce the choice. Different seed
-order can choose a different URL/title/metadata. Text duplicates still supply
-links to the frontier, subject to the existing crawl limits and access policy.
+order can choose a different URL/title/metadata. The scheduling policy version
+is recorded in `processing.frontier` in
+new run manifests; changing policy can also change order and representatives.
+The current policy is described in [frontier scheduling](frontier-scheduling.md).
+Text duplicates still supply links to the frontier, subject to the existing
+crawl limits and access policy.
 The index retains SHA-256 fingerprints, not copies of corpus texts. The standalone
 JSONL writer has no deduplication state and writes each supplied record.
 

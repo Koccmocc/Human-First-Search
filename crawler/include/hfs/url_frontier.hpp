@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <deque>
+#include <list>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -9,6 +11,8 @@
 #include <vector>
 
 namespace hfs {
+
+inline constexpr std::string_view frontier_policy_version{"depth-host-round-robin-v1"};
 
 struct FrontierLimits {
     std::size_t max_pending{1000};
@@ -23,7 +27,8 @@ struct CrawlTarget {
 
 enum class EnqueueResult { added, duplicate, invalid_url, out_of_scope, depth_limit, queue_full, url_limit };
 
-// A single-threaded FIFO. Accepted URLs stay known for the lifetime of the frontier.
+// Single-threaded breadth-first traversal, with round-robin hosts at each depth.
+// Each host/depth keeps FIFO order. Accepted URLs stay known after popping.
 class UrlFrontier {
 public:
     explicit UrlFrontier(std::vector<std::string> allowed_hosts, FrontierLimits limits = {});
@@ -35,11 +40,18 @@ public:
     [[nodiscard]] auto accepted_count() const noexcept -> std::size_t;
 
 private:
+    struct HostQueue {
+        std::string host;
+        std::deque<CrawlTarget> targets;
+    };
+
     auto enqueue(std::string_view base, std::string_view reference, std::size_t depth) -> EnqueueResult;
 
     std::vector<std::string> allowed_hosts_;
     FrontierLimits limits_;
-    std::deque<CrawlTarget> pending_;
+    // Only nonempty depths/hosts are retained. List splicing rotates without allocation.
+    std::map<std::size_t, std::list<HostQueue>> pending_;
+    std::size_t pending_count_{};
     std::unordered_set<std::string> known_;
 };
 

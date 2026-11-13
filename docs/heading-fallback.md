@@ -86,3 +86,6 @@ All 152 CTest entries passed in Debug and Release on MinGW GCC. New scenarios
 cover selection bounds, normalization, skipped headings, ambiguity, semantic
 priority, short/UTF-8 thresholds, deep trees, JSONL source/version and CLI link
 discovery outside the selected region.
+
+The subsequent [host scheduling review](frontier-scheduling.md) addresses the
+pilot's FIFO concentration while retaining this extraction version.
