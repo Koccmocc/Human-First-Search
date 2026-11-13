@@ -51,7 +51,28 @@ TEST(Jsonl, SerializesPageFieldsCapturedTimeAndUnknownLanguage)
     EXPECT_EQ(record.at("content_type"), page.content_type);
     EXPECT_EQ(record.at("requested_urls"), page.requested_urls);
     EXPECT_TRUE(record.at("language").is_null());
+    EXPECT_TRUE(record.at("language_percent").is_null());
+    EXPECT_TRUE(record.at("language_detection_version").is_null());
     EXPECT_EQ(record.at("fetched_at"), "2026-11-09T12:34:56Z");
+}
+
+TEST(Jsonl, PreservesDetectedAndUnknownLanguageMetadata)
+{
+    auto page = sample_page();
+    page.language = hfs::LanguageResult{hfs::LanguageStatus::detected, "en", 97};
+    std::ostringstream known;
+    hfs::write_page_jsonl(known, page);
+    const auto record = nlohmann::json::parse(known.str());
+    EXPECT_EQ(record.at("language"), "en");
+    EXPECT_EQ(record.at("language_percent"), 97);
+    EXPECT_EQ(record.at("language_detection_version"), "cld2-compact-v1");
+    page.language = hfs::LanguageResult{hfs::LanguageStatus::too_short, std::nullopt, 0};
+    std::ostringstream unknown;
+    hfs::write_page_jsonl(unknown, page);
+    const auto absent = nlohmann::json::parse(unknown.str());
+    EXPECT_TRUE(absent.at("language").is_null());
+    EXPECT_TRUE(absent.at("language_percent").is_null());
+    EXPECT_EQ(absent.at("language_detection_version"), "cld2-compact-v1");
 }
 
 TEST(Jsonl, FormatsUtcAcrossEpochAndLeapDayBoundaries)

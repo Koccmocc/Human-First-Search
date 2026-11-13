@@ -10,11 +10,12 @@ records and log records have separate files and contracts.
 | `event` | `crawl_target` |
 | `url` | Canonical URL popped from the queue, before redirects |
 | `depth` | Discovery depth; seeds have depth zero |
-| `outcome` | `page_delivered`, `fetch_failed`, `response_skipped`, `empty_text`, `duplicate_url` or `duplicate_text` |
+| `outcome` | `page_delivered`, `fetch_failed`, `response_skipped`, `empty_text`, `duplicate_url`, `duplicate_text`, `non_english` or `unknown_language` |
 | `final_url` | Known final URL, or `null` on fetch failure |
 | `http_status` | Final response status, or `null` when no response is available or no fresh fetch occurred |
 | `html_input` | Input-gate result for status 200; otherwise `null` |
 | `error` | `null`, or an object with `category`, `kind` and `message` |
+| `language` | Analysis object with `status`, `code`, `percent`, `detector_version`, or `null` if analysis was not reached |
 
 `html_input` uses `ready`, `not_html`, `invalid_content_type`,
 `unsupported_encoding` or `invalid_text`. Error category `http` uses
@@ -25,11 +26,23 @@ Permission denials still combine scope and robots checks as `request_denied`.
 
 In a normally completed session, the number of log lines equals the summary's
 `targets` count. Outcome counts match `pages`, `fetch_failures`,
-`skipped_responses`, `empty_texts`, `duplicate_pages` and `duplicate_texts`.
+`skipped_responses`, `empty_texts`, `duplicate_pages`, `duplicate_texts`,
+`non_english_pages` and `unknown_language_pages`.
 Events retain queue processing order. A successful page event follows consumer
 delivery and link discovery. Pending targets, rejected seeds/links and individual
 HTTP/robots requests are outside this stream. It contains no bodies, event
 timestamps, partial redirect chains on failures or duplicate-representative map.
+
+Language analysis follows nonempty main-text extraction and precedes hashing.
+`non_english` means a reliable detected code differs from `en`.
+`unknown_language` reports `too_short`, `unreliable`, `invalid_text` or `too_large`
+in `language.status`; these results have `code: null` and `percent: 0`.
+The detector version is `cld2-compact-v1`. A detected language's percent is its
+share of classified text, not a confidence probability. Rejected pages still
+supply links. English-only admission is the default; `--language any` still
+records analysis but never emits these two rejection outcomes. Empty text,
+pre-extraction failures and already processed final URLs leave `language` null.
+Schema-1 logs written before language integration lack this optional field.
 
 When `--max-duration-ms` stops scheduling new targets, completed targets remain in
 the log and pending URLs do not receive events. The summary reports

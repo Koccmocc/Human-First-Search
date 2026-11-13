@@ -18,8 +18,23 @@ auto outcome_name(hfs::CrawlOutcome value) -> std::string_view
     case empty_text: return "empty_text";
     case duplicate_url: return "duplicate_url";
     case duplicate_text: return "duplicate_text";
+    case non_english: return "non_english";
+    case unknown_language: return "unknown_language";
     }
     throw std::invalid_argument{"Unknown crawl outcome"};
+}
+
+auto language_status_name(hfs::LanguageStatus value) -> std::string_view
+{
+    using enum hfs::LanguageStatus;
+    switch (value) {
+    case detected: return "detected";
+    case too_short: return "too_short";
+    case unreliable: return "unreliable";
+    case invalid_text: return "invalid_text";
+    case too_large: return "too_large";
+    }
+    throw std::invalid_argument{"Unknown language status"};
 }
 
 auto input_name(hfs::HtmlInputStatus value) -> std::string_view
@@ -65,6 +80,13 @@ namespace hfs {
 
 void write_crawl_event_jsonl(std::ostream& output, const CrawlEvent& event)
 {
+    nlohmann::json language = nullptr;
+    if (event.language) {
+        const auto& result = *event.language;
+        language = {{"status", language_status_name(result.status)},
+                    {"code", result.code ? nlohmann::json(*result.code) : nlohmann::json(nullptr)},
+                    {"percent", result.percent}, {"detector_version", language_detection_version}};
+    }
     nlohmann::json error = nullptr;
     if (const auto* http = std::get_if<HttpError>(&event.fetch_error)) {
         error = {{"category", "http"}, {"kind", error_name(http->kind)}, {"message", http->message}};
@@ -81,7 +103,7 @@ void write_crawl_event_jsonl(std::ostream& output, const CrawlEvent& event)
         {"http_status", event.http_status ? nlohmann::json(*event.http_status) : nlohmann::json(nullptr)},
         {"html_input", event.html_input ? nlohmann::json(input_name(*event.html_input))
                                        : nlohmann::json(nullptr)},
-        {"error", error}};
+        {"error", error}, {"language", language}};
     // Validate and escape the whole record before modifying the stream.
     auto line = record.dump();
     line.push_back('\n');

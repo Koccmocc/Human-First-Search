@@ -52,7 +52,8 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
         const auto limit = std::find_if(limits.begin(), limits.end(),
                                          [option](const auto& item) { return item.name == option; });
         if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" &&
-            option != "--output" && option != "--log" && option != "--max-duration-ms" && limit == limits.end()) {
+            option != "--output" && option != "--log" && option != "--max-duration-ms" &&
+            option != "--language" && limit == limits.end()) {
             return hfs::CliError{"Unknown argument: " + std::string{option}};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--")) {
@@ -73,6 +74,12 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
             if (std::find(command.allowed_hosts.begin(), command.allowed_hosts.end(), *host) == command.allowed_hosts.end()) {
                 command.allowed_hosts.push_back(std::move(*host));
             }
+        } else if (option == "--language") {
+            if (!supplied.insert(option).second || (value != "en" && value != "any")) {
+                return hfs::CliError{"--language requires en or any and cannot be repeated"};
+            }
+            command.options.language_policy = value == "en" ? hfs::CrawlLanguagePolicy::english_only
+                                                             : hfs::CrawlLanguagePolicy::any;
         } else if (option == "--output" || option == "--log") {
             auto& path = option == "--output" ? command.output_path : command.log_path;
             if (path || value.empty() || value.find('\0') != std::string_view::npos) {
@@ -170,6 +177,7 @@ auto help_text() noexcept -> std::string_view
            "  --delay-ms N        Per-host request interval (default 1000; zero for local tests).\n"
            "  --output PATH       Write a new JSONL file; parent directory must exist.\n"
            "  --log PATH          Write a new crawl-event JSONL file.\n"
+           "  --language en|any   Admit reliable English by default; any is diagnostic mode.\n"
            "\n"
            "Numbers are unsigned decimal; only depth and delay may be zero.\n"
            "Outputs final page URLs to stdout and a crawl summary to stderr.\n"

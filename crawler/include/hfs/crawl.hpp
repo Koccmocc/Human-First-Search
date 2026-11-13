@@ -15,6 +15,8 @@
 
 namespace hfs {
 
+enum class CrawlLanguagePolicy { english_only, any };
+
 struct CrawlOptions {
     using WallClock = std::chrono::system_clock;
     using SteadyClock = std::chrono::steady_clock;
@@ -33,6 +35,7 @@ struct CrawlOptions {
     std::function<WallClock::time_point()> wall_now{WallClock::now};
     // Optional synchronous notification after each completed queue target.
     CrawlObserver on_event;
+    CrawlLanguagePolicy language_policy{CrawlLanguagePolicy::english_only};
 };
 
 struct CrawledPage {
@@ -49,6 +52,8 @@ struct CrawledPage {
     // Observed after the final response returns, before validation/extraction.
     std::optional<std::chrono::system_clock::time_point> fetched_at;
     HtmlTextSource text_source{HtmlTextSource::body};
+    // Absent for manually constructed/older records without language analysis.
+    std::optional<LanguageResult> language;
 };
 
 enum class CrawlStop { queue_empty, page_limit, target_limit, duration_limit };
@@ -62,6 +67,8 @@ struct CrawlSummary {
     std::size_t empty_texts{};
     std::size_t duplicate_pages{};
     std::size_t duplicate_texts{};
+    std::size_t non_english_pages{};
+    std::size_t unknown_language_pages{};
     std::size_t rejected_seeds{};
     std::size_t pending_urls{};
 };
@@ -73,6 +80,8 @@ using PageConsumer = std::function<void(const CrawledPage&)>;
 // reaches extraction; rejected metadata/encodings count as skipped_responses.
 // Delivers the first page for each nonempty extracted-text SHA-256.
 // Empty texts count as empty_texts; empty texts and duplicates still supply links.
+// English-only admission is the default. Any-language mode still records detection.
+// Language rejections still supply links and do not use the delivered-page budget.
 // Setup, clock, allocation, parser, consumer and observer exceptions abort and propagate.
 // Events exclude rejected seeds, unprocessed pending URLs and targets aborted by exceptions.
 [[nodiscard]] auto crawl(std::span<const std::string> seeds,

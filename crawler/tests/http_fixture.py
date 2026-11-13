@@ -7,6 +7,26 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+ENGLISH_TEXT = (
+    "The public library opens its doors every morning and welcomes readers of all ages. "
+    "Visitors can borrow books, study local history, or attend a workshop with their neighbours. "
+    "Staff members help students find reliable information and explain how to use the catalogue. "
+    "The reading room offers a quiet place to think, learn, and discover new ideas."
+)
+SECOND_ENGLISH_TEXT = (
+    "The local museum preserves the history of the town and the people who built it. "
+    "Visitors can explore photographs, household objects, and letters written by previous generations. "
+    "Teachers bring their students to learn how everyday life has changed over the years. "
+    "Volunteers explain the stories behind each collection and help families discover their own history."
+)
+GERMAN_TEXT = (
+    "Die Bibliothek ist ein wichtiger Treffpunkt in unserer Stadt. Jeden Morgen kommen "
+    "Menschen hierher, um gemeinsam zu lesen und neue Informationen zu finden. Die Mitarbeiter "
+    "helfen bei der Suche nach passenden Zeitungen und wissenschaftlichen Arbeiten. "
+    "Kinder lernen die Geschichten verschiedener Menschen kennen und entwickeln eigene Ideen. "
+    "In einem ruhigen Raum kann jeder arbeiten, nachdenken und sich auf seine Aufgaben konzentrieren."
+)
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
@@ -45,6 +65,7 @@ class Handler(BaseHTTPRequestHandler):
             "/crawl/alias-two": (301, "/crawl/nested/page"),
             "/crawl/export-alias": (302, "/crawl/export"),
             "/dedup/a-alias": (302, "/dedup/a"),
+            "/language/german-alias": (302, "/language/german"),
         }
         default_status = {"/missing": 404, "/empty": 204}.get(self.path, 200)
         status, location = redirects.get(self.path, (default_status, None))
@@ -86,6 +107,19 @@ class Handler(BaseHTTPRequestHandler):
             "/content/copy-child": b'<p>Copy child</p>',
         }
         body = crawl_pages.get(self.path, body)
+        language_pages = {
+            "/language/english": '<html lang="de"><title>English page</title><main>' + ENGLISH_TEXT + '</main>',
+            "/language/english-two": '<main>' + SECOND_ENGLISH_TEXT + '</main>',
+            "/language/english-copy": '<main>' + ENGLISH_TEXT + '</main>'
+                                      '<nav><a href="/language/english-two">Another page</a></nav>',
+            "/language/german": '<html lang="en"><title>' + ENGLISH_TEXT + '</title><main>' + GERMAN_TEXT + '</main>'
+                                '<nav><a href="/language/english">English child</a></nav>',
+            "/language/short": '<title>' + ENGLISH_TEXT + '</title><main>Hello</main><nav>' + ENGLISH_TEXT +
+                               '<a href="/language/english-two">Another child</a></nav>',
+            "/language/numbers": '<main>' + '12345 -- ' * 50 + '</main>',
+        }
+        if self.path in language_pages:
+            body = language_pages[self.path].encode("utf-8")
         if self.path in ("/crawl/error", "/crawl/plain", "/crawl/untyped", "/crawl/htmlish"):
             body = b'<a href="/must-not-follow">Do not discover</a>'
         if self.path == "/crawl/error":

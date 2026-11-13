@@ -16,6 +16,10 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         options.max_pages == 0 || options.max_targets == 0 || options.max_duration.count() <= 0) {
         throw std::invalid_argument{"Crawl requires a consumer, clocks and positive page/target/duration limits"};
     }
+    if (options.language_policy != CrawlLanguagePolicy::english_only &&
+        options.language_policy != CrawlLanguagePolicy::any) {
+        throw std::invalid_argument{"Unknown crawl language policy"};
+    }
 
     const auto started = options.steady_now();
     UrlFrontier frontier{allowed_hosts, options.frontier};
@@ -110,25 +114,36 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
             ++summary.empty_texts;
             event.outcome = CrawlOutcome::empty_text;
         } else {
-            const auto identity = make_page_identity(fetched->final_url, extracted.text);
-            if (!identity) {
-                throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
-            }
-            if (seen_text_hashes.insert(identity->text_hash).second) {
-                // FIFO chooses the first representative; only unique text uses the page budget.
-                const CrawledPage page{fetched->final_url, document.title(), std::move(extracted.text),
-                                       target->depth, response.status, response.content_type,
-                                       std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
-                                       fetched_at, extracted.source};
-                consume(page);
-                ++summary.pages;
-                event.outcome = CrawlOutcome::page_delivered;
+            event.language = detect_language(extracted.text);
+            const auto& language = *event.language;
+            if (options.language_policy == CrawlLanguagePolicy::english_only &&
+                language.status != LanguageStatus::detected) {
+                ++summary.unknown_language_pages;
+                event.outcome = CrawlOutcome::unknown_language;
+            } else if (options.language_policy == CrawlLanguagePolicy::english_only && language.code != "en") {
+                ++summary.non_english_pages;
+                event.outcome = CrawlOutcome::non_english;
             } else {
-                ++summary.duplicate_texts;
-                event.outcome = CrawlOutcome::duplicate_text;
+                const auto identity = make_page_identity(fetched->final_url, extracted.text);
+                if (!identity) {
+                    throw std::runtime_error{"Fetched page has no valid canonical URL for its ID"};
+                }
+                if (seen_text_hashes.insert(identity->text_hash).second) {
+                    // Only admitted unique text uses the page budget and deduplication index.
+                    const CrawledPage page{fetched->final_url, document.title(), std::move(extracted.text),
+                                           target->depth, response.status, response.content_type,
+                                           std::move(fetched->requested_urls), identity->page_id, identity->text_hash,
+                                           fetched_at, extracted.source, event.language};
+                    consume(page);
+                    ++summary.pages;
+                    event.outcome = CrawlOutcome::page_delivered;
+                } else {
+                    ++summary.duplicate_texts;
+                    event.outcome = CrawlOutcome::duplicate_text;
+                }
             }
         }
-        // Empty or duplicate text can still lead to useful pages.
+        // Empty, duplicate or language-rejected text can still lead to useful pages.
         // Relative references belong to the final URL, not the redirect source.
         for (const auto& link : document.links()) {
             (void)frontier.add_link(parent, link);

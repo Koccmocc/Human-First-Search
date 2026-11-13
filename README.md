@@ -4,8 +4,8 @@ Local university proof of concept. The C++ crawler supports bounded traversal
 from explicit seeds and allowed hosts, with robots.txt, request delays and UTF-8
 HTML validation. The CLI prints discovered page URLs and session statistics,
 and can export draft JSONL records with semantic content selection and session
-text deduplication. Content-quality evaluation and language filtering remain
-future steps.
+text deduplication. Reliable English detection is required by default; quality
+evaluation on real sites remains future work.
 Development is independent of the team's Python/API/UI.
 
 ## Build and run
@@ -66,6 +66,7 @@ the entire command before any request occurs.
 | `--max-pending N` | 1000 | Pending queue capacity |
 | `--max-urls N` | 5000 | Total admitted unique URL budget |
 | `--delay-ms N` | 1000 | Per-host interval, shared by robots and page requests |
+| `--language en\|any` | en | Admit detected English; any enables diagnostic exports of all nonempty text |
 
 Pass options and values as separate arguments (`--max-pages 5`). Numbers must
 be unsigned decimal integers in range. Only depth and delay may be zero; use
@@ -81,7 +82,7 @@ exist; destinations already present at the preflight check are rejected. Stderr
 contains a single session summary such as:
 
 ```text
-crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 rejected_seeds=0 pending_urls=0
+crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 non_english_pages=0 unknown_language_pages=0 rejected_seeds=0 pending_urls=0
 ```
 
 Exit `0` means the session completed normally, including a configured limit or
@@ -721,11 +722,11 @@ Rejected discovery candidates retain the frontier's existing admission semantics
 
 The input gate below validates UTF-8 before extraction. The extractor selects
 semantic content with filtered body fallback. Charset conversion, HTML `base`,
-language-based admission and per-request logs remain
+per-request logs remain
 separate increments. The CLI `crawl` command configures and invokes this library
 entry point as described above.
 
-Twenty-six GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
+Thirty GoogleTest scenarios run under the local HTTP fixture in `crawler.crawl`.
 They cover link discovery and cycles, robots/scope enforcement, redirect bases and
 duplicate destinations, page/target/depth/queue limits, skipped media/statuses,
 failure recovery, encoding rejection, page identities, timestamps, semantic selection,
@@ -752,7 +753,8 @@ const auto summary = hfs::crawl(seeds, {"example.org"}, consume, options);
 
 `CrawlOutcome` distinguishes `page_delivered`, `fetch_failed`, `response_skipped`,
 `empty_text`, `duplicate_url` and `duplicate_text`, corresponding to the existing
-summary counters. Each event includes the queued URL and depth. A completed fetch
+summary counters. Additional `non_english` and `unknown_language` outcomes count
+language rejections. Each event includes the queued URL and depth. A completed fetch
 adds the final URL and HTTP status. A known queued URL skipped before fetching
 has its known final URL but no fresh status. Fetch failures have neither: the
 current fetcher does not expose a partial request chain on errors.
@@ -791,9 +793,9 @@ robots, depth and queue limits apply, and each popped target still uses
 They do not use `max_pages`, so a navigation-only seed can lead to useful content.
 An all-empty session completes normally and leaves an empty JSONL output.
 
-This is only an emptiness check: short nonempty texts remain eligible. Extraction
-rules and their version are unchanged. Language and broader quality filtering
-remain separate work. HTTP and CLI tests cover normalized whitespace, filtered
+This stage only checks emptiness; later language admission can reject short
+nonempty text. Extraction rules and their version are unchanged. Broader quality
+evaluation remains separate work. HTTP and CLI tests cover normalized whitespace, filtered
 chrome, continued discovery, independent budgets and an all-empty export.
 
 ### Session text deduplication
@@ -935,15 +937,14 @@ malformed UTF-8. These fixtures establish linkage and basic behavior, rather
 than measured accuracy on a real corpus. Upstream targets pages of roughly 200
 characters or more and cautions about very short or non-prose input.
 
-The crawl loop does not call the detector yet, and corpus `language` remains
-`null`. The standalone wrapper below defines bounded input and unknown results;
-English-only admission remains a separate step.
+The crawl loop uses the standalone wrapper below for language analysis before
+admission and deduplication. Detector metadata is exported in corpus and journal.
 
 Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 123-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 126-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface
@@ -986,5 +987,38 @@ const auto language = result.code.value_or("unknown");
 Six wrapper tests cover owning results, English and non-English detection,
 Unicode length boundaries, malformed UTF-8/NUL, non-prose and the byte limit,
 including corruption at the end of a maximum-sized buffer. The wrapper is
-independent of the crawl loop; JSONL corpus output remains unchanged until it
-is integrated with admission and logging.
+independent of crawl policy; the loop applies English admission using its result.
+
+### English admission in the crawl loop
+
+`CrawlOptions::language_policy` defaults to `CrawlLanguagePolicy::english_only`,
+matching CLI `--language en`. After main-text extraction, nonempty text is
+classified once. Only status `detected` with code `en` proceeds to hashing,
+deduplication and the consumer. HTML `lang`, titles, navigation and URL hints do
+not bias detection of the selected text.
+
+Other detected codes increment `non_english_pages`; unknown results increment
+`unknown_language_pages`. Empty text retains its separate counter. Language
+rejections still supply all-document links under the usual scope, robots, depth
+and queue rules. Their final URLs remain processed. They use `max_targets` but
+not `max_pages`, and never enter the admitted-text hash index.
+
+`--language any` / `CrawlLanguagePolicy::any` is diagnostic mode: all nonempty
+texts remain eligible and retain their actual analysis. This is useful for
+short fixtures and inspecting non-English pages. Rejection counters stay zero.
+Both modes export `language`, nullable `language_percent` and
+`language_detection_version` in corpus records. Journal events include the typed
+analysis status, code and percent, or null if processing stopped before analysis.
+See the [corpus](docs/corpus-format.md) and [journal](docs/crawl-log-format.md)
+contracts. Unknown results do not acquire an invented language code.
+
+The initial policy uses the detector's reliable dominant code with no additional
+percentage threshold. Percent is not confidence; mixed-language passages may
+remain. Real-site evaluation is still needed. Earlier short demo HTML may now
+yield no records in default mode; use `--language any` when inspecting it.
+
+Four added C++ HTTP scenarios cover rejected-page link discovery, conflicting
+HTML hints, metadata, independent budgets, any-language mode and admitted-text
+deduplication. CLI and serializer tests independently verify exports and journal
+reasons, including an all-rejected empty corpus. Existing mechanics tests use
+explicit any-language mode to keep their short fixtures focused on those rules.

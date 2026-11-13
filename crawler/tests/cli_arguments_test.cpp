@@ -69,6 +69,7 @@ TEST(CliArguments, KeepsCrawlDefaultsAndAllowsZeroDepthAndDelay)
     const auto& options = std::get<hfs::CrawlCommand>(defaults).options;
     const hfs::CrawlOptions expected;
     EXPECT_EQ(options.max_pages, expected.max_pages);
+    EXPECT_EQ(options.language_policy, hfs::CrawlLanguagePolicy::english_only);
     EXPECT_EQ(options.max_duration, std::chrono::minutes{30});
     EXPECT_EQ(options.timing.interval, expected.timing.interval);
     const auto zero = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
@@ -76,6 +77,24 @@ TEST(CliArguments, KeepsCrawlDefaultsAndAllowsZeroDepthAndDelay)
     ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(zero));
     EXPECT_EQ(std::get<hfs::CrawlCommand>(zero).options.frontier.max_depth, 0U);
     EXPECT_EQ(std::get<hfs::CrawlCommand>(zero).options.timing.interval.count(), 0);
+}
+
+TEST(CliArguments, AcceptsExplicitLanguagePolicyAndRejectsInvalidOrRepeatedValues)
+{
+    for (const auto* value : {"en", "any"}) {
+        const auto result = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+                                   "--language", value});
+        ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+        EXPECT_EQ(std::get<hfs::CrawlCommand>(result).options.language_policy,
+                  std::string_view{value} == "en" ? hfs::CrawlLanguagePolicy::english_only : hfs::CrawlLanguagePolicy::any);
+    }
+    for (const auto* value : {"", "EN", "de", "all"}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+            "--allow-host", "example.org", "--language", value})));
+    }
+    EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--language"})));
+    EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+        "--allow-host", "example.org", "--language", "en", "--language", "any"})));
 }
 
 TEST(CliArguments, OwnsOptionalLogPathAndRejectsInvalidOrRepeatedLogArguments)

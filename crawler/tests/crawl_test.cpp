@@ -19,6 +19,8 @@ protected:
         ASSERT_NE(address, nullptr) << "Run through CTest's local-server wrapper";
         base = address;
         options.timing.interval = std::chrono::milliseconds{0};
+        // Existing scenarios isolate mechanics using deliberately short fixture text.
+        options.language_policy = hfs::CrawlLanguagePolicy::any;
     }
 
     auto run(std::vector<std::string> seeds) -> hfs::CrawlSummary
@@ -26,6 +28,93 @@ protected:
         return hfs::crawl(seeds, {"127.0.0.1"}, collect, options);
     }
 };
+
+TEST_F(Crawl, EnglishAdmissionRejectsOtherAndUnknownTextButDiscoversItsLinks)
+{
+    options.language_policy = hfs::CrawlLanguagePolicy::english_only;
+    std::vector<hfs::CrawlEvent> events;
+    options.on_event = [&](const auto& event) { events.push_back(event); };
+    const auto summary = run({base + "/language/german-alias", base + "/language/german",
+                              base + "/language/short", base + "/language/numbers"});
+    ASSERT_EQ(pages.size(), 2U);
+    EXPECT_EQ(pages[0].url, base + "/language/english");
+    EXPECT_EQ(pages[1].url, base + "/language/english-two");
+    for (const auto& page : pages) {
+        EXPECT_EQ(page.depth, 1U);
+        ASSERT_TRUE(page.language);
+        EXPECT_EQ(page.language->code, "en");
+        EXPECT_EQ(page.language->status, hfs::LanguageStatus::detected);
+        const auto identity = hfs::make_page_identity(page.url, page.text);
+        ASSERT_TRUE(identity);
+        EXPECT_EQ(page.text_hash, identity->text_hash);
+    }
+    EXPECT_EQ(summary.pages, 2U);
+    EXPECT_EQ(summary.non_english_pages, 1U);
+    EXPECT_EQ(summary.unknown_language_pages, 2U);
+    EXPECT_EQ(summary.duplicate_pages, 1U);
+    EXPECT_EQ(summary.duplicate_texts, 0U);
+    EXPECT_EQ(summary.targets_processed, 6U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+    ASSERT_EQ(events.size(), 6U);
+    EXPECT_EQ(events[0].outcome, hfs::CrawlOutcome::non_english);
+    ASSERT_TRUE(events[0].language);
+    EXPECT_EQ(events[0].language->code, "de"); // HTML lang/title must not override main text.
+    EXPECT_EQ(events[1].outcome, hfs::CrawlOutcome::duplicate_url);
+    EXPECT_FALSE(events[1].language); // This destination was already processed.
+    EXPECT_EQ(events[2].outcome, hfs::CrawlOutcome::unknown_language);
+    ASSERT_TRUE(events[2].language);
+    EXPECT_EQ(events[2].language->status, hfs::LanguageStatus::too_short);
+    ASSERT_TRUE(events[3].language);
+    EXPECT_EQ(events[3].language->status, hfs::LanguageStatus::unreliable);
+}
+
+TEST_F(Crawl, LanguageRejectionsUseTargetsButNotTheDeliveredPageBudget)
+{
+    options.language_policy = hfs::CrawlLanguagePolicy::english_only;
+    options.max_pages = 1;
+    auto summary = run({base + "/language/german", base + "/language/short"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].url, base + "/language/english");
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::page_limit);
+    EXPECT_EQ(summary.targets_processed, 3U);
+    EXPECT_EQ(summary.non_english_pages, 1U);
+    EXPECT_EQ(summary.unknown_language_pages, 1U);
+    EXPECT_EQ(summary.pending_urls, 1U);
+
+    pages.clear();
+    options.max_targets = 1;
+    summary = run({base + "/language/german"});
+    EXPECT_TRUE(pages.empty());
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::target_limit);
+    EXPECT_EQ(summary.targets_processed, 1U);
+    EXPECT_EQ(summary.pending_urls, 1U);
+}
+
+TEST_F(Crawl, AnyLanguageModeRetainsDetectionAndAdmitsUnknownText)
+{
+    options.frontier.max_depth = 0;
+    const auto summary = run({base + "/language/german", base + "/language/short"});
+    ASSERT_EQ(pages.size(), 2U);
+    ASSERT_TRUE(pages[0].language);
+    EXPECT_EQ(pages[0].language->code, "de");
+    ASSERT_TRUE(pages[1].language);
+    EXPECT_EQ(pages[1].language->status, hfs::LanguageStatus::too_short);
+    EXPECT_FALSE(pages[1].language->code);
+    EXPECT_EQ(summary.non_english_pages, 0U);
+    EXPECT_EQ(summary.unknown_language_pages, 0U);
+}
+
+TEST_F(Crawl, AdmittedEnglishTextStillDeduplicatesAndDuplicateLinksAreDiscovered)
+{
+    options.language_policy = hfs::CrawlLanguagePolicy::english_only;
+    options.max_pages = 2;
+    const auto summary = run({base + "/language/english", base + "/language/english-copy"});
+    ASSERT_EQ(pages.size(), 2U);
+    EXPECT_EQ(pages[1].url, base + "/language/english-two");
+    EXPECT_EQ(summary.duplicate_texts, 1U);
+    EXPECT_EQ(summary.targets_processed, 3U);
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+}
 
 TEST_F(Crawl, DiscoversLinksInBreadthFirstOrderUnderRobotsAndScopePolicy)
 {
@@ -533,6 +622,9 @@ TEST_F(Crawl, ValidatesLimitsAndConsumerAndPropagatesConsumerExceptions)
     options.wall_now = {};
     EXPECT_THROW(run({base + "/must-not-follow"}), std::invalid_argument);
     options.wall_now = hfs::CrawlOptions::WallClock::now;
+    options.language_policy = static_cast<hfs::CrawlLanguagePolicy>(-1);
+    EXPECT_THROW(run({base + "/must-not-follow"}), std::invalid_argument);
+    options.language_policy = hfs::CrawlLanguagePolicy::any;
 
     const std::vector<std::string> seeds{base + "/crawl/b"};
     EXPECT_THROW((void)hfs::crawl(seeds, {"127.0.0.1"}, [](const auto&) {

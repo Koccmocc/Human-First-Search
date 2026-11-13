@@ -15,9 +15,12 @@ BASE = os.environ["HFS_TEST_BASE_URL"]
 
 
 class CliCrawl(unittest.TestCase):
-    def run_crawl(self, *arguments):
+    def run_crawl(self, *arguments, language="any"):
+        # Mechanics fixtures are deliberately short; None exercises the CLI default.
+        language_arguments = [] if language is None else ["--language", language]
         return subprocess.run(
-            [CRAWLER, "crawl", "--allow-host", "127.0.0.1", "--delay-ms", "0", *arguments],
+            [CRAWLER, "crawl", "--allow-host", "127.0.0.1", "--delay-ms", "0",
+             *language_arguments, *arguments],
             capture_output=True, text=True, encoding="utf-8", timeout=5,
         )
 
@@ -29,6 +32,59 @@ class CliCrawl(unittest.TestCase):
     def fetch_time(self, record):
         self.assertRegex(record["fetched_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         return datetime.strptime(record["fetched_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+    def test_default_english_admission_logs_rejections_and_discovers_their_children(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "english.jsonl"
+            log = Path(directory) / "english-log.jsonl"
+            result = self.run_crawl("--seed", BASE + "/language/german", "--seed", BASE + "/language/short",
+                                    "--max-pages", "1", "--output", str(corpus), "--log", str(log), language=None)
+            summary = self.summary(result)
+            records = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
+            events = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(records), 1)
+            page = records[0]
+            self.assertEqual(page["url"], BASE + "/language/english")
+            self.assertEqual(page["language"], "en")
+            self.assertGreaterEqual(page["language_percent"], 90)
+            self.assertEqual(page["language_detection_version"], "cld2-compact-v1")
+            self.assertEqual(page["text_hash"], "sha256:" + hashlib.sha256(page["text"].encode()).hexdigest())
+            self.assertEqual(result.stdout.splitlines(), [page["url"]])
+            self.assertEqual([event["outcome"] for event in events],
+                             ["non_english", "unknown_language", "page_delivered"])
+            self.assertEqual(events[0]["language"]["code"], "de")
+            self.assertEqual(events[1]["language"]["status"], "too_short")
+            self.assertIsNone(events[1]["language"]["code"])
+            self.assertEqual(summary["non_english_pages"], "1")
+            self.assertEqual(summary["unknown_language_pages"], "1")
+            self.assertEqual(summary["pages"], "1")
+            self.assertEqual(summary["targets"], "3")
+            self.assertEqual(summary["pending_urls"], "1")
+            self.assertEqual(summary["stop"], "page_limit")
+
+            empty = Path(directory) / "rejected-only.jsonl"
+            summary = self.summary(self.run_crawl("--seed", BASE + "/language/german",
+                                                 "--seed", BASE + "/language/short", "--max-depth", "0",
+                                                 "--output", str(empty), language=None))
+            self.assertEqual(empty.read_bytes(), b"")
+            self.assertEqual(summary["pages"], "0")
+            self.assertEqual(summary["non_english_pages"], "1")
+            self.assertEqual(summary["unknown_language_pages"], "1")
+
+    def test_any_language_mode_exports_detection_without_rejection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "any-language.jsonl"
+            result = self.run_crawl("--seed", BASE + "/language/german", "--seed", BASE + "/language/short",
+                                    "--max-depth", "0", "--output", str(corpus))
+            summary = self.summary(result)
+            records = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual([record["language"] for record in records], ["de", None])
+            self.assertGreater(records[0]["language_percent"], 0)
+            self.assertIsNone(records[1]["language_percent"])
+            for record in records:
+                self.assertEqual(record["language_detection_version"], "cld2-compact-v1")
+            self.assertEqual(summary["non_english_pages"], "0")
+            self.assertEqual(summary["unknown_language_pages"], "0")
 
     def test_discovers_pages_and_keeps_summary_out_of_stdout(self):
         result = self.run_crawl("--seed", BASE + "/crawl/start", "--max-depth", "1")
@@ -214,7 +270,8 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual([event["url"] for event in events], [BASE + path for path in paths])
             counters = {"page_delivered": "pages", "fetch_failed": "fetch_failures",
                         "response_skipped": "skipped_responses", "empty_text": "empty_texts",
-                        "duplicate_url": "duplicate_pages", "duplicate_text": "duplicate_texts"}
+                        "duplicate_url": "duplicate_pages", "duplicate_text": "duplicate_texts",
+                        "non_english": "non_english_pages", "unknown_language": "unknown_language_pages"}
             for outcome, counter in counters.items():
                 self.assertEqual(sum(event["outcome"] == outcome for event in events), int(summary[counter]))
             for event in events:

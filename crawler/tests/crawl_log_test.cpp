@@ -38,7 +38,7 @@ TEST(CrawlLog, SerializesKnownFieldsAndAbsentMetadataAsOneLine)
     std::ostringstream absent;
     hfs::write_crawl_event_jsonl(absent, event);
     const auto missing = nlohmann::json::parse(absent.str());
-    for (const auto* field : {"final_url", "http_status", "html_input", "error"}) {
+    for (const auto* field : {"final_url", "http_status", "html_input", "error", "language"}) {
         EXPECT_TRUE(missing.at(field).is_null());
     }
 }
@@ -50,7 +50,9 @@ TEST(CrawlLog, PreservesOutcomeAndInputNames)
         {hfs::CrawlOutcome::response_skipped, "response_skipped"},
         {hfs::CrawlOutcome::empty_text, "empty_text"},
         {hfs::CrawlOutcome::duplicate_url, "duplicate_url"},
-        {hfs::CrawlOutcome::duplicate_text, "duplicate_text"}};
+        {hfs::CrawlOutcome::duplicate_text, "duplicate_text"},
+        {hfs::CrawlOutcome::non_english, "non_english"},
+        {hfs::CrawlOutcome::unknown_language, "unknown_language"}};
     for (const auto& [value, name] : outcomes) {
         hfs::CrawlEvent event;
         event.outcome = value;
@@ -69,6 +71,33 @@ TEST(CrawlLog, PreservesOutcomeAndInputNames)
         std::ostringstream output;
         hfs::write_crawl_event_jsonl(output, event);
         EXPECT_EQ(nlohmann::json::parse(output.str()).at("html_input"), name);
+    }
+}
+
+TEST(CrawlLog, PreservesLanguageRejectionDiagnostics)
+{
+    hfs::CrawlEvent event;
+    event.outcome = hfs::CrawlOutcome::non_english;
+    event.language = hfs::LanguageResult{hfs::LanguageStatus::detected, "de", 98};
+    std::ostringstream known;
+    hfs::write_crawl_event_jsonl(known, event);
+    const auto language = nlohmann::json::parse(known.str()).at("language");
+    EXPECT_EQ(language.at("status"), "detected");
+    EXPECT_EQ(language.at("code"), "de");
+    EXPECT_EQ(language.at("percent"), 98);
+    EXPECT_EQ(language.at("detector_version"), "cld2-compact-v1");
+    const std::pair<hfs::LanguageStatus, std::string_view> statuses[]{
+        {hfs::LanguageStatus::too_short, "too_short"}, {hfs::LanguageStatus::unreliable, "unreliable"},
+        {hfs::LanguageStatus::invalid_text, "invalid_text"}, {hfs::LanguageStatus::too_large, "too_large"}};
+    for (const auto& [status, name] : statuses) {
+        event.outcome = hfs::CrawlOutcome::unknown_language;
+        event.language = hfs::LanguageResult{status, std::nullopt, 0};
+        std::ostringstream unknown;
+        hfs::write_crawl_event_jsonl(unknown, event);
+        const auto detail = nlohmann::json::parse(unknown.str()).at("language");
+        EXPECT_EQ(detail.at("status"), name);
+        EXPECT_TRUE(detail.at("code").is_null());
+        EXPECT_EQ(detail.at("percent"), 0);
     }
 }
 

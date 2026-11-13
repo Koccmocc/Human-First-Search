@@ -60,8 +60,12 @@ void write_page_jsonl(std::ostream& output, const CrawledPage& page)
         {"title", page.title},
         {"text", page.text},
         {"text_source", source_name(page.text_source)},
-        // Language detection is still pending; a manually supplied page may lack time.
-        {"language", nullptr},
+        {"language", page.language && page.language->code ? nlohmann::json(*page.language->code)
+                                                         : nlohmann::json(nullptr)},
+        {"language_percent", page.language && page.language->code ? nlohmann::json(page.language->percent)
+                                                                 : nlohmann::json(nullptr)},
+        {"language_detection_version", page.language ? nlohmann::json(language_detection_version)
+                                                     : nlohmann::json(nullptr)},
         {"fetched_at", page.fetched_at ? nlohmann::json(utc_timestamp(*page.fetched_at))
                                        : nlohmann::json(nullptr)},
         {"text_hash", page.text_hash},
