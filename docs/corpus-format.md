@@ -10,13 +10,13 @@ serialization. This contract is provisional until team integration.
 | Field | Current meaning |
 | --- | --- |
 | `schema_version` | Integer `1` |
-| `extractor_version` | `semantic-text-v2`: current `HtmlDocument::main_text()` rules |
+| `extractor_version` | `semantic-text-v3`: current `HtmlDocument::main_text()` rules |
 | `url_normalization_version` | `lexbor-url-v1`: current HTTP(S) URL resolution/serialization rules |
 | `page_id` | `sha256:` plus the SHA-256 of the canonical final URL |
 | `url` | Canonical final HTTP(S) URL, without fragment |
 | `title` | Extracted title; may be empty |
 | `text` | Selected semantic content or filtered body fallback; nonempty for crawl output |
-| `text_source` | Selected container: `main`, `article`, `main_role` or `body` |
+| `text_source` | Selected branch: `main`, `article`, `main_role`, `heading` or `body` |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
 | `language` | Detected CLD2 code, normally `en`; `null` for unknown text admitted in diagnostic mode or absent analysis |
 | `language_percent` | Dominant-language share of classified text; `null` if no code is available |
@@ -33,15 +33,25 @@ belongs to extraction; hashing and serialization do not additionally normalize
 Unicode or whitespace. Bump the corresponding version tag when extraction or
 URL normalization rules change.
 
-`semantic-text-v2` chooses the first nonempty HTML `main`, otherwise the first
+`semantic-text-v3` chooses the first nonempty HTML `main`, otherwise the first
 nonempty HTML `article`, otherwise the first nonempty HTML element with exact
-`role="main"`, otherwise body fallback. The role branch reports `main_role`.
+`role="main"`, otherwise the heading fallback below, otherwise filtered body.
+The role branch reports `main_role`.
 It trims HTML ASCII whitespace and accepts only the single lowercase role;
 role lists and broader ARIA role resolution are not implemented.
 It skips script/style/template,
 nav/aside/footer and `hidden` subtrees; normalization retains the original body
 whitespace/entity rules. Content headers are retained. Container emptiness is
 checked after filtering. Only HTML-namespace containers qualify.
+
+The `heading` branch requires exactly one HTML `h1` outside skipped subtrees.
+Its immediate parent must be HTML `body`, `div` or `section`; the heading must
+yield nonempty text, and following siblings in that parent must yield at least
+200 normalized UTF-8 bytes after filtering. Selection joins the heading and those
+following siblings with a newline, omitting earlier siblings and text outside
+the parent. It does not climb through title wrappers or resolve multiple h1s.
+The byte gate is a conservative extraction heuristic, separate from the language
+detector's Unicode-scalar threshold. See [the fallback review](heading-fallback.md).
 
 `text_source` exposes the chosen branch. The source `body` still applies the
 semantic skip rules and can retain unmarked site chrome. This is a tag-based
@@ -51,6 +61,10 @@ exports used `body-text-v1` and had no `text_source`. New selection can change
 discovery is independent of the selected text region. `semantic-text-v1` used
 main/article/body only; v2 can change text hashes for former body-fallback pages
 while leaving their URL-based IDs unchanged.
+Version v3 adds `heading`; older semantic branches keep their previous priority.
+Unmarked boilerplate within a heading region can remain, and useful text before
+the heading or outside its parent can be omitted. The heuristic does not prove
+that the selected region is a complete article.
 
 Default `--language en` admits only `LanguageStatus::detected` with code `en`.
 Detection uses selected main text with neutral hints. Its fixed bounds are

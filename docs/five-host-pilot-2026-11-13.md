@@ -109,3 +109,6 @@ The producing stem is `data/five-hosts-20261113-211125`, with suffixes
 Live content and timestamps can change, so these hashes identify this local run
 and are not expected results for future live runs. This increment changes the
 diagnostic configuration and documentation; the C++ implementation is unchanged.
+
+A later [heading fallback review](heading-fallback.md) records the v3 extraction
+change, a controlled HTML comparison and the repeated pilot's remaining cases.

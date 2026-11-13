@@ -212,6 +212,93 @@ TEST(HtmlDocument, MainRoleDoesNotGuessFromRoleListsOrSimilarValues)
     }
 }
 
+TEST(HtmlDocument, HeadingFallbackRemovesPreludeAndPreservesNormalizationAndDiscovery)
+{
+    const std::string prose(200, 'x');
+    const hfs::HtmlDocument document{"<div>Site menu<a href='/outside'>Outside</a></div>"
+        "<h1>Page &amp; title</h1><p> " + prose + " &nbsp; Caf&#233;</p>"
+        "<nav>Navigation</nav><footer>Footer</footer><p hidden>Hidden</p>"};
+    const auto selected = document.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::heading);
+    EXPECT_EQ(selected.text, "Page & title\n" + prose + " Caf\xC3\xA9");
+    EXPECT_NE(document.body_text().find("Site menu"), std::string::npos);
+    EXPECT_EQ(document.links(), (std::vector<std::string>{"/outside"}));
+}
+
+TEST(HtmlDocument, HeadingFallbackStaysInsideItsImmediateContainer)
+{
+    for (const auto* tag : {"div", "section"}) {
+        const std::string prose(200, 'p');
+        const hfs::HtmlDocument document{"<p>Outer prelude</p><" + std::string{tag} + ">"
+            "<p>Inner prelude</p><h1>Heading</h1><p>" + prose + "</p></" + tag + "><p>Outer tail</p>"};
+        EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::heading);
+        EXPECT_EQ(document.main_text().text, "Heading\n" + prose);
+    }
+}
+
+TEST(HtmlDocument, HeadingFallbackKeepsNativeAndRoleContainerPriority)
+{
+    for (const auto* container : {"main", "article", "section role=main"}) {
+        const std::string opening{container};
+        const auto tag = opening.substr(0, opening.find(' '));
+        const hfs::HtmlDocument document{"<h1>Fallback heading</h1><p>" + std::string(200, 'p') +
+            "</p><" + opening + ">Semantic content</" + tag + ">"};
+        EXPECT_NE(document.main_text().source, hfs::HtmlTextSource::heading);
+        EXPECT_EQ(document.main_text().text, "Semantic content");
+    }
+}
+
+TEST(HtmlDocument, HeadingFallbackCountsOnlyHeadingsOutsideSkippedSubtrees)
+{
+    const std::string prose(200, 'p');
+    const hfs::HtmlDocument document{"<nav><h1>Menu</h1></nav><div hidden><h1>Hidden</h1></div>"
+        "<template><h1>Inert</h1></template><h1>Visible</h1><p>" + prose + "</p>"};
+    EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::heading);
+    EXPECT_EQ(document.main_text().text, "Visible\n" + prose);
+}
+
+TEST(HtmlDocument, HeadingFallbackRequiresAnUnambiguousHeadingWithSubstantialFollowingText)
+{
+    const std::string prose(200, 'p');
+    for (const auto& html : {"<h1>First</h1><p>" + prose + "</p><h1>Second</h1>",
+                            "<div><h1>Title wrapper only</h1></div><p>" + prose + "</p>",
+                            "<h1> </h1><p>" + prose + "</p>",
+                            "<ul><li><h1>List heading</h1><p>" + prose + "</p></li></ul>",
+                            "<h1>Long heading " + prose + "</h1><p>Short teaser</p>"}) {
+        const hfs::HtmlDocument document{html};
+        EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::body);
+    }
+    const hfs::HtmlDocument short_text{"<h1>Heading</h1><p>" + std::string(199, 'p') + "</p>"
+        "<nav>" + prose + "</nav><p hidden>" + prose + "</p>"};
+    EXPECT_EQ(short_text.main_text().source, hfs::HtmlTextSource::body);
+}
+
+TEST(HtmlDocument, HeadingFallbackThresholdMeasuresNormalizedUtf8Bytes)
+{
+    std::string text;
+    for (int count = 0; count < 100; ++count) {
+        text += "\xC3\xA9";
+    }
+    const hfs::HtmlDocument document{"<p>Prelude</p><h1>Heading</h1><p> \t" + text + " &nbsp;</p>"};
+    EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::heading);
+    EXPECT_EQ(document.main_text().text, "Heading\n" + text);
+}
+
+TEST(HtmlDocument, HeadingFallbackSupportsDeepContainersIteratively)
+{
+    std::string html;
+    for (int depth = 0; depth < 2000; ++depth) {
+        html += "<div>";
+    }
+    html += "<h1>Deep heading</h1><p>" + std::string(200, 'p') + "</p>";
+    for (int depth = 0; depth < 2000; ++depth) {
+        html += "</div>";
+    }
+    const auto selected = hfs::HtmlDocument{html}.main_text();
+    EXPECT_EQ(selected.source, hfs::HtmlTextSource::heading);
+    EXPECT_EQ(selected.text, "Deep heading\n" + std::string(200, 'p'));
+}
+
 TEST(HtmlDocument, MainTextUsesFilteredBodyWhenNoUsableContainerExists)
 {
     const hfs::HtmlDocument document{

@@ -84,13 +84,14 @@ auto skip_text(lxb_dom_node_t* node, bool semantic) -> bool
                reinterpret_cast<const lxb_char_t*>("hidden"), 6);
 }
 
-auto extract_text(lxb_dom_node_t* root, bool semantic) -> std::string
+// A non-null first must be a direct child of root; traversal still stops at root.
+auto extract_text(lxb_dom_node_t* root, bool semantic, lxb_dom_node_t* first = nullptr) -> std::string
 {
     if (root == nullptr || skip_text(root, semantic)) {
         return {};
     }
     BodyText output;
-    auto* node = root->first_child;
+    auto* node = first == nullptr ? root->first_child : first;
     // Walk parent/sibling links instead of recursing on untrusted HTML depth.
     while (node != nullptr) {
         const bool element = node->type == LXB_DOM_NODE_TYPE_ELEMENT;
@@ -150,6 +151,7 @@ auto matches_source(lxb_dom_node_t* node, HtmlTextSource source) -> bool
     case HtmlTextSource::article: return node->local_name == LXB_TAG_ARTICLE;
     case HtmlTextSource::main_role: return has_main_role(node);
     case HtmlTextSource::body: return false;
+    case HtmlTextSource::heading: return false;
     }
     return false;
 }
@@ -183,6 +185,60 @@ auto select_text(lxb_dom_node_t* root, HtmlTextSource source)
         node = node->next;
     }
     return std::nullopt;
+}
+
+auto select_heading_text(lxb_dom_node_t* root) -> std::optional<HtmlText>
+{
+    lxb_dom_node_t* heading{};
+    auto* node = root->first_child;
+    // Require one non-skipped h1, rather than guessing between several page sections.
+    // This scan and the bounded number of extraction passes stay iterative and linear.
+    while (node != nullptr) {
+        const bool descend = !skip_text(node, true);
+        if (descend && node->type == LXB_DOM_NODE_TYPE_ELEMENT && node->ns == LXB_NS_HTML &&
+            node->local_name == LXB_TAG_H1) {
+            if (heading != nullptr) {
+                return std::nullopt;
+            }
+            heading = node;
+        }
+        if (descend && node->first_child != nullptr) {
+            node = node->first_child;
+            continue;
+        }
+        while (node->next == nullptr) {
+            node = node->parent;
+            if (node == root) {
+                node = nullptr;
+                break;
+            }
+        }
+        if (node != nullptr) {
+            node = node->next;
+        }
+    }
+    if (heading == nullptr || heading->next == nullptr) {
+        return std::nullopt;
+    }
+    auto* parent = heading->parent;
+    if (parent->ns != LXB_NS_HTML || (parent->local_name != LXB_TAG_BODY &&
+        parent->local_name != LXB_TAG_DIV && parent->local_name != LXB_TAG_SECTION)) {
+        return std::nullopt;
+    }
+    auto title = extract_text(heading, true);
+    if (title.empty()) {
+        return std::nullopt;
+    }
+    auto following = extract_text(parent, true, heading->next);
+    // A title wrapper or tiny teaser is insufficient evidence to discard the rest
+    // of the body. This byte threshold is independent of language admission.
+    constexpr std::size_t minimum_following_bytes{200};
+    if (following.size() < minimum_following_bytes) {
+        return std::nullopt;
+    }
+    title += '\n'; // h1 is a block boundary under the existing normalization rules.
+    title += following;
+    return HtmlText{std::move(title), HtmlTextSource::heading};
 }
 
 } // namespace
@@ -260,6 +316,9 @@ auto HtmlDocument::main_text() const -> HtmlText
         }
     }
     if (auto selected = select_text(body, HtmlTextSource::main_role)) {
+        return std::move(*selected);
+    }
+    if (auto selected = select_heading_text(body)) {
         return std::move(*selected);
     }
     return HtmlText{extract_text(body, true), HtmlTextSource::body};

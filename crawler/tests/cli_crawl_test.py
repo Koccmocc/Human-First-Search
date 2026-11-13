@@ -124,7 +124,7 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["build"]["compiler"], "GNU")
             self.assertEqual(record["build"]["cplusplus"], 202002)
             self.assertTrue(record["build"]["compiler_version"])
-            self.assertEqual(record["processing"], {"extractor": "semantic-text-v2",
+            self.assertEqual(record["processing"], {"extractor": "semantic-text-v3",
                 "url_normalization": "lexbor-url-v1", "language_detection": "cld2-compact-v1"})
             self.assertEqual(record["configuration"], {"schema_version": 1,
                 "seeds": [BASE + "/manifest/large"], "allowed_hosts": ["127.0.0.1"],
@@ -189,6 +189,20 @@ class CliCrawl(unittest.TestCase):
     def fetch_time(self, record):
         self.assertRegex(record["fetched_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         return datetime.strptime(record["fetched_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+    def test_heading_fallback_exports_selected_text_and_discovers_links_outside_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "heading.jsonl"
+            result = self.run_crawl("--seed", BASE + "/content/heading", "--max-pages", "2", "--max-depth", "1",
+                                    "--output", str(corpus))
+            self.summary(result)
+            pages = [json.loads(line) for line in corpus.read_bytes().splitlines()]
+            self.assertEqual([page["url"] for page in pages], [BASE + "/content/heading", BASE + "/content/outside"])
+            self.assertEqual(pages[0]["text_source"], "heading")
+            self.assertTrue(pages[0]["text"].startswith("Library\nThe public library"))
+            self.assertNotIn("prelude", pages[0]["text"])
+            self.assertNotIn("Outer tail", pages[0]["text"])
+            self.assertEqual(pages[0]["text_hash"], "sha256:" + hashlib.sha256(pages[0]["text"].encode()).hexdigest())
 
     def test_default_english_admission_logs_rejections_and_discovers_their_children(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -317,7 +331,7 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(record["title"], 'Export "title" \\ caf\u00e9')
             self.assertEqual(record["text"], expected_text)
             self.assertEqual(record["schema_version"], 1)
-            self.assertEqual(record["extractor_version"], "semantic-text-v2")
+            self.assertEqual(record["extractor_version"], "semantic-text-v3")
             self.assertEqual(record["text_source"], "body")
             self.assertEqual(record["url_normalization_version"], "lexbor-url-v1")
             self.assertEqual(record["requested_urls"], [BASE + "/crawl/export-alias", record["url"]])
@@ -381,7 +395,7 @@ class CliCrawl(unittest.TestCase):
                              [BASE + path for path in ("/content/page", "/content/outside", "/content/copy-child")])
             expected_text = "Heading\nCaf\u00e9 & tea"
             self.assertEqual(records[0]["text"], expected_text)
-            self.assertEqual(records[0]["extractor_version"], "semantic-text-v2")
+            self.assertEqual(records[0]["extractor_version"], "semantic-text-v3")
             self.assertEqual([record["text_source"] for record in records], ["article", "main", "body"])
             self.assertEqual(records[0]["text_hash"], "sha256:" + hashlib.sha256(expected_text.encode()).hexdigest())
             self.assertEqual(records[0]["page_id"], "sha256:" + hashlib.sha256(records[0]["url"].encode()).hexdigest())

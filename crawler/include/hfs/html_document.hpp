@@ -7,9 +7,9 @@
 
 namespace hfs {
 
-inline constexpr std::string_view html_extractor_version{"semantic-text-v2"};
+inline constexpr std::string_view html_extractor_version{"semantic-text-v3"};
 
-enum class HtmlTextSource { main, article, body, main_role };
+enum class HtmlTextSource { main, article, body, main_role, heading };
 
 struct HtmlText {
     std::string text;
@@ -36,8 +36,10 @@ public:
     // Block boundaries become newlines; inline markup adds no extra spaces.
     [[nodiscard]] auto body_text() const -> std::string;
 
-    // First nonempty HTML main, then article, then exact role="main", otherwise body.
+    // First nonempty HTML main, then article, then exact role="main".
     // Role matching trims HTML whitespace and requires the single lowercase value.
+    // Otherwise try a unique non-skipped h1 and following siblings in a body/div/section,
+    // requiring 200 normalized UTF-8 bytes after the heading, then use filtered body.
     // Ignores nav/aside/footer and hidden subtrees, plus script/style/template. This is a
     // semantic-container heuristic, without CSS evaluation or content scoring.
     [[nodiscard]] auto main_text() const -> HtmlText;

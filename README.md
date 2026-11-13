@@ -307,9 +307,10 @@ corpus text; this low-level getter retains its original behavior.
 ### Semantic content selection
 
 `HtmlDocument::main_text()` returns owning `HtmlText` with `text` and an
-`HtmlTextSource` value (`main`, `article`, `main_role` or `body`). It chooses the
+`HtmlTextSource` value (`main`, `article`, `main_role`, `heading` or `body`). It chooses the
 first nonempty HTML `main`, then the first nonempty HTML `article`, then an HTML
-element with exact `role="main"`, then body fallback. Each scan follows DOM order.
+element with exact `role="main"`, then a heading fallback, then filtered body.
+Each scan follows DOM order.
 Emptiness is checked after normalization and filtering. Candidates
 inside ignored subtrees are not considered.
 
@@ -327,16 +328,25 @@ Role lists and uppercase values are outside this limited heuristic; this is not
 a full ARIA role resolver. Empty and moved-from documents return empty text with
 source `body`.
 
+The heading fallback requires exactly one HTML `h1` outside skipped subtrees,
+directly inside a `body`, `div` or `section`. It selects the nonempty heading and
+its following siblings in that parent, requiring at least 200 normalized UTF-8
+bytes after the heading. Earlier siblings and content outside the parent are
+excluded. Multiple h1s, short teasers and isolated title wrappers retain body
+fallback. This is a byte gate for extraction, independent of language detection.
+See the [heading fallback review](docs/heading-fallback.md) for examples and limits.
+
 The crawl loop hashes and deduplicates the selected text. JSONL labels the policy
-`semantic-text-v2` and records `text_source` so body fallback is visible. Changing
+`semantic-text-v3` and records `text_source` so fallback selection is visible. Changing
 selection rules can change `text_hash` while URL-based `page_id` stays stable.
 Link discovery still uses `links()` across the whole document, including outside
 the selected container and on pages skipped as text duplicates.
 
-This is an initial semantic-tag heuristic. It selects the first usable container
-without scoring article quality or size. CSS visibility, class-name heuristics,
+This is a structural heuristic without article-quality scoring. CSS visibility, class-name heuristics,
 other ARIA semantics and JavaScript rendering are not evaluated. Unmarked boilerplate
 can remain, especially on body fallback, which also retains a site's header.
+Heading selection can also omit useful content outside the chosen range or keep
+unmarked navigation inside it; it is not a complete readability algorithm.
 The [first live pilot](docs/live-pilot-2026-11-13.md) found and verified the
 role-main fallback on Python.org. Broader real-site quality evaluation remains.
 
@@ -1000,7 +1010,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 144-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 152-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

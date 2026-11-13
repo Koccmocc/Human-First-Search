@@ -18,6 +18,7 @@ auto source_name(hfs::HtmlTextSource source) -> std::string_view
     case hfs::HtmlTextSource::article: return "article";
     case hfs::HtmlTextSource::body: return "body";
     case hfs::HtmlTextSource::main_role: return "main_role";
+    case hfs::HtmlTextSource::heading: return "heading";
     }
     throw std::invalid_argument{"Unknown HTML text source"};
 }
