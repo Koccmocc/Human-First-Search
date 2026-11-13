@@ -103,10 +103,10 @@ statistics. It needs no internet.
 limits. Choose new output files to repeat those parameters:
 
 ```powershell
-./build/release/crawler/hfs-crawler.exe crawl --config config/pilot.json --output data/config-pilot-corpus.jsonl --log data/config-pilot-log.jsonl
+./build/release/crawler/hfs-crawler.exe crawl --config config/pilot.json --output data/config-pilot-corpus.jsonl --log data/config-pilot-log.jsonl --manifest data/config-pilot-run.json
 ```
 
-Create the output directory first. With `--config`, only `--output` and `--log`
+Create the output directory first. With `--config`, only `--output`, `--log` and `--manifest`
 may be added; direct seed, host and limit options cannot be mixed with it. File
 parameters use the same URL/scope/numeric validation as direct CLI mode. Unknown
 or duplicate keys, wrong types and files over 64 KiB are rejected before output
@@ -114,7 +114,15 @@ creation or requests. Config errors exit 2. The source file is read-only.
 
 The [configuration contract](docs/crawl-config.md) lists supported keys and
 defaults. Saved settings are the first step toward reproducible runs; they do
-not replace a content snapshot or the future run manifest.
+not replace a content snapshot.
+
+`--manifest PATH` records effective settings (including defaults), processing and
+dependency versions, timing and the complete session summary. After closing
+corpus and journal files, the CLI hashes their exact bytes in 64 KiB chunks and
+stores byte counts and SHA-256 fingerprints. Existing manifest destinations are
+rejected before HTTP. Read the manifest after exit `0`; fatal errors can leave
+empty/partial outputs. See the [manifest contract](docs/run-manifest.md) for
+fields, replaying its configuration and remaining reproducibility limits.
 
 ## Export JSONL records
 
@@ -206,6 +214,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `docs/crawl-log-format.md`: crawl-event JSONL journal contract.
 - `config/pilot.json`: saved parameters for a small live crawl.
 - `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
+- `docs/run-manifest.md`: run metadata, effective settings and artifact fingerprints.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
@@ -926,7 +935,7 @@ and extraction rules. JSONL records retain `extractor_version` and
 On Windows, SHA-256 uses [Windows CNG](https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptcreatehash)
 through the system `bcrypt` import library. Provider/hash handles use RAII and
 each call owns its context. This adds no downloaded dependency. Other platforms
-link `OpenSSL::Crypto` and use [EVP_Digest](https://docs.openssl.org/3.0/man3/EVP_DigestInit/),
+link `OpenSSL::Crypto` and use the streaming [EVP digest API](https://docs.openssl.org/3.0/man3/EVP_DigestInit/),
 alongside the existing OpenSSL requirement for their curl build. The Windows CNG
 path is verified on MinGW GCC in Debug/Release; the non-Windows path has not been
 built in this environment.
@@ -971,7 +980,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 138-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 143-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

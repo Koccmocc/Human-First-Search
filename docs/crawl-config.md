@@ -37,7 +37,7 @@ size is 64 KiB; the reader checks it with a bounded read. Scope, URL, host and
 numeric validation is reused from the existing CLI parser. No shell commands
 are constructed from config values.
 
-With `--config`, only `--output` and `--log` may accompany it. Mixing direct
+With `--config`, only `--output`, `--log` and `--manifest` may accompany it. Mixing direct
 seeds, hosts or limit flags with a file is rejected instead of defining hidden
 override precedence. Paths are relative to the process's current working
 directory, including the config file path. Output paths are not config keys.
@@ -53,6 +53,7 @@ adds bounded file reading. Both return `CrawlCommand` or `CliError` and perform
 no crawling. Six unit scenarios and process tests cover validation, size bounds,
 ownership, CLI equivalence, failures before requests and preservation of files.
 
-Saved parameters do not freeze live web content, capture effective dependency
-versions or produce a run manifest. Those remain separate parts of corpus
+Saved parameters do not freeze live web content. Add `--manifest PATH` to record
+effective settings, versions and artifact hashes; see the [manifest contract](run-manifest.md).
+Content snapshots and quality review remain separate parts of corpus
 reproducibility; independent live runs can have different content and timestamps.

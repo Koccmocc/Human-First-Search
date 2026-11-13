@@ -111,6 +111,7 @@ class Handler(BaseHTTPRequestHandler):
             "/language/english": '<html lang="de"><title>English page</title><header>Site controls</header>'
                                  '<section role="main">' + ENGLISH_TEXT + '</section>',
             "/language/english-two": '<main>' + SECOND_ENGLISH_TEXT + '</main>',
+            "/manifest/large": '<main>' + (ENGLISH_TEXT + ' ') * 400 + '</main>',
             "/language/english-copy": '<main>' + ENGLISH_TEXT + '</main>'
                                       '<nav><a href="/language/english-two">Another page</a></nav>',
             "/language/german": '<html lang="en"><title>' + ENGLISH_TEXT + '</title><main>' + GERMAN_TEXT + '</main>'

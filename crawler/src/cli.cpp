@@ -41,8 +41,8 @@ auto parse_config_command(std::span<const std::string_view> arguments) -> hfs::C
     hfs::CrawlConfigCommand command;
     for (std::size_t index = 0; index < arguments.size(); ++index) {
         const auto option = arguments[index];
-        if (option != "--config" && option != "--output" && option != "--log") {
-            return hfs::CliError{"With --config, only --output and --log may be supplied"};
+        if (option != "--config" && option != "--output" && option != "--log" && option != "--manifest") {
+            return hfs::CliError{"With --config, only --output, --log and --manifest may be supplied"};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--") ||
             arguments[index].empty() || arguments[index].find('\0') != std::string_view::npos) {
@@ -54,7 +54,8 @@ auto parse_config_command(std::span<const std::string_view> arguments) -> hfs::C
             }
             command.path = arguments[index];
         } else {
-            auto& path = option == "--output" ? command.output_path : command.log_path;
+            auto& path = option == "--output" ? command.output_path :
+                         option == "--log" ? command.log_path : command.manifest_path;
             if (path) {
                 return hfs::CliError{"Duplicate option: " + std::string{option}};
             }
@@ -84,7 +85,7 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
                                          [option](const auto& item) { return item.name == option; });
         if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" &&
             option != "--output" && option != "--log" && option != "--max-duration-ms" &&
-            option != "--language" && limit == limits.end()) {
+            option != "--language" && option != "--manifest" && limit == limits.end()) {
             return hfs::CliError{"Unknown argument: " + std::string{option}};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--")) {
@@ -111,8 +112,9 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
             }
             command.options.language_policy = value == "en" ? hfs::CrawlLanguagePolicy::english_only
                                                              : hfs::CrawlLanguagePolicy::any;
-        } else if (option == "--output" || option == "--log") {
-            auto& path = option == "--output" ? command.output_path : command.log_path;
+        } else if (option == "--output" || option == "--log" || option == "--manifest") {
+            auto& path = option == "--output" ? command.output_path :
+                         option == "--log" ? command.log_path : command.manifest_path;
             if (path || value.empty() || value.find('\0') != std::string_view::npos) {
                 return hfs::CliError{std::string{option} + " requires one nonempty file path and cannot be repeated"};
             }
@@ -191,7 +193,7 @@ auto help_text() noexcept -> std::string_view
     return "Human-first Search crawler\n"
            "Usage: hfs-crawler [--help | --version]\n"
            "       hfs-crawler crawl --seed URL --allow-host HOST [options]\n"
-           "       hfs-crawler crawl --config PATH [--output PATH] [--log PATH]\n"
+           "       hfs-crawler crawl --config PATH [--output PATH] [--log PATH] [--manifest PATH]\n"
            "\n"
            "Options:\n"
            "  -h, --help  Show this help message.\n"
@@ -209,8 +211,9 @@ auto help_text() noexcept -> std::string_view
            "  --delay-ms N        Per-host request interval (default 1000; zero for local tests).\n"
            "  --output PATH       Write a new JSONL file; parent directory must exist.\n"
            "  --log PATH          Write a new crawl-event JSONL file.\n"
+           "  --manifest PATH     Write run metadata and artifact SHA-256 after completion.\n"
            "  --language en|any   Admit reliable English by default; any is diagnostic mode.\n"
-           "  --config PATH       Read schema-1 JSON; only output/log options may accompany it.\n"
+           "  --config PATH       Read schema-1 JSON; only output/log/manifest options may accompany it.\n"
            "\n"
            "Numbers are unsigned decimal; only depth and delay may be zero.\n"
            "Outputs final page URLs to stdout and a crawl summary to stderr.\n"

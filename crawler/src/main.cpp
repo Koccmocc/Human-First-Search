@@ -2,6 +2,7 @@
 #include "hfs/config.hpp"
 #include "hfs/crawl_log.hpp"
 #include "hfs/jsonl.hpp"
+#include "hfs/manifest.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -15,29 +16,29 @@
 
 namespace {
 
-void open_jsonl_file(std::ofstream& stream, const std::optional<std::string>& path)
+void open_output_file(std::ofstream& stream, const std::optional<std::string>& path,
+                      std::string_view kind = "JSONL")
 {
     if (!path) {
         return;
     }
-    // Check each destination immediately before opening, including the second file.
-    // This also rejects a log path that aliases the newly opened corpus file.
+    // Check immediately before each open, so aliases of earlier outputs also fail.
     if (std::filesystem::exists(std::filesystem::symlink_status(*path))) {
-        throw std::runtime_error{"JSONL output path already exists: " + *path};
+        throw std::runtime_error{std::string{kind} + " output path already exists: " + *path};
     }
     // Binary mode keeps LF line endings identical on Windows and Unix.
     stream.open(*path, std::ios::out | std::ios::binary);
     if (!stream) {
-        throw std::runtime_error{"Could not open JSONL output file: " + *path};
+        throw std::runtime_error{"Could not open " + std::string{kind} + " output file: " + *path};
     }
 }
 
-void close_jsonl_file(std::ofstream& stream)
+void close_output_file(std::ofstream& stream, std::string_view kind = "JSONL")
 {
     if (stream.is_open()) {
         stream.close();
         if (!stream) {
-            throw std::runtime_error{"Could not close JSONL output file"};
+            throw std::runtime_error{"Could not close " + std::string{kind} + " output file"};
         }
     }
 }
@@ -67,6 +68,7 @@ auto run(int argc, char* argv[]) -> int
         if (auto* command = std::get_if<hfs::CrawlCommand>(&loaded)) {
             command->output_path = config->output_path;
             command->log_path = config->log_path;
+            command->manifest_path = config->manifest_path;
             action = std::move(*command);
         } else {
             action = std::move(std::get<hfs::CliError>(loaded));
@@ -80,12 +82,17 @@ auto run(int argc, char* argv[]) -> int
     if (const auto* command = std::get_if<hfs::CrawlCommand>(&action)) {
         std::ofstream output;
         std::ofstream log;
-        open_jsonl_file(output, command->output_path);
-        open_jsonl_file(log, command->log_path);
+        std::ofstream manifest;
+        open_output_file(output, command->output_path);
+        open_output_file(log, command->log_path);
+        // Reserve the destination before HTTP; populate it only after normal completion.
+        open_output_file(manifest, command->manifest_path, "Manifest");
         auto options = command->options;
         if (log.is_open()) {
             options.on_event = [&log](const auto& event) { hfs::write_crawl_event_jsonl(log, event); };
         }
+        const auto started_at = std::chrono::system_clock::now();
+        const auto steady_start = std::chrono::steady_clock::now();
         const auto summary = hfs::crawl(command->seeds, command->allowed_hosts, [&output](const auto& page) {
             if (output.is_open()) {
                 hfs::write_page_jsonl(output, page);
@@ -94,8 +101,8 @@ auto run(int argc, char* argv[]) -> int
                 throw std::runtime_error{"Could not write page URL to stdout"};
             }
         }, options);
-        close_jsonl_file(output);
-        close_jsonl_file(log);
+        close_output_file(output);
+        close_output_file(log);
         std::cout.flush();
         if (!std::cout) {
             throw std::runtime_error{"Could not flush page URLs to stdout"};
@@ -111,7 +118,17 @@ auto run(int argc, char* argv[]) -> int
                   << " unknown_language_pages=" << summary.unknown_language_pages
                   << " rejected_seeds=" << summary.rejected_seeds
                   << " pending_urls=" << summary.pending_urls << '\n';
-        return std::cerr ? 0 : 1;
+        std::cerr.flush();
+        if (!std::cerr) {
+            throw std::runtime_error{"Could not flush crawl summary to stderr"};
+        }
+        if (manifest.is_open()) {
+            const hfs::RunTiming timing{started_at, std::chrono::system_clock::now(),
+                std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - steady_start)};
+            hfs::write_run_manifest(manifest, *command, summary, timing);
+            close_output_file(manifest, "Manifest");
+        }
+        return 0;
     }
 
     switch (std::get<hfs::CliAction>(action)) {

@@ -135,6 +135,31 @@ TEST(CliArguments, ParsesAnOwningConfigRequestWithoutOpeningFiles)
     }
 }
 
+TEST(CliArguments, OwnsManifestPathsInBothModesAndRejectsInvalidOrRepeatedPaths)
+{
+    std::string path{"run metadata.json"};
+    const auto direct = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+                               "--manifest", path});
+    const auto configured = parse({"crawl", "--config", "config.json", "--manifest", path});
+    path.assign("released");
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(direct));
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlConfigCommand>(configured));
+    EXPECT_EQ(std::get<hfs::CrawlCommand>(direct).manifest_path, "run metadata.json");
+    EXPECT_EQ(std::get<hfs::CrawlConfigCommand>(configured).manifest_path, "run metadata.json");
+    for (const auto value : {std::string_view{}, std::string_view{"bad\0path", 8}}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+            "--allow-host", "example.org", "--manifest", value})));
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--config", "config.json", "--manifest", value})));
+    }
+    for (const auto& invalid : {parse({"crawl", "--manifest"}),
+            parse({"crawl", "--config", "config.json", "--manifest"}),
+            parse({"crawl", "--config", "config.json", "--manifest", "one", "--manifest", "two"}),
+            parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+                   "--manifest", "one", "--manifest", "two"})}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(invalid));
+    }
+}
+
 TEST(CliArguments, RequiresExplicitSeedsAndScopeAndChecksEverySeed)
 {
     for (const auto& result : {parse({"crawl"}), parse({"crawl", "--seed", "https://example.org/"}),

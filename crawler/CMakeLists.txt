@@ -2,7 +2,7 @@ add_library(crawler_core STATIC
     src/cli.cpp src/html_document.cpp src/url.cpp src/http_client.cpp src/http_fetch.cpp
     src/robots.cpp src/robots_loading.cpp src/robots_cache.cpp src/page_fetcher.cpp
     src/host_delay.cpp src/url_frontier.cpp src/crawl.cpp src/html_input.cpp src/page_identity.cpp
-    src/jsonl.cpp src/crawl_log.cpp src/language.cpp src/config.cpp)
+    src/jsonl.cpp src/crawl_log.cpp src/language.cpp src/config.cpp src/sha256.cpp src/manifest.cpp)
 target_include_directories(crawler_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_compile_features(crawler_core PUBLIC cxx_std_20)
 target_link_libraries(crawler_core PRIVATE lexbor_static CURL::libcurl_static hfs_robots_parser)
@@ -18,7 +18,9 @@ else()
 endif()
 
 # Keep the version in project() as the single source of truth.
-target_compile_definitions(crawler_core PRIVATE HFS_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(crawler_core PRIVATE HFS_VERSION="${PROJECT_VERSION}"
+    HFS_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}" HFS_BUILD_TYPE="$<CONFIG>"
+    HFS_CMAKE_VERSION="${CMAKE_VERSION}")
 
 add_executable(hfs-crawler src/main.cpp)
 target_link_libraries(hfs-crawler PRIVATE crawler_core)
@@ -31,6 +33,11 @@ foreach(target IN ITEMS crawler_core hfs-crawler)
 endforeach()
 
 if(BUILD_TESTING)
+    add_executable(manifest_test tests/manifest_test.cpp)
+    target_link_libraries(manifest_test PRIVATE crawler_core GTest::gtest_main nlohmann_json::nlohmann_json)
+    target_compile_options(manifest_test PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(manifest_test TEST_PREFIX "crawler." DISCOVERY_TIMEOUT 15 PROPERTIES TIMEOUT 10)
+
     add_executable(config_test tests/config_test.cpp)
     target_link_libraries(config_test PRIVATE crawler_core GTest::gtest_main)
     target_compile_definitions(config_test PRIVATE HFS_PILOT_CONFIG="${PROJECT_SOURCE_DIR}/config/pilot.json")

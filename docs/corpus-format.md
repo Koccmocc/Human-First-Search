@@ -109,7 +109,9 @@ The standalone serializer can still write an empty text supplied by its caller;
 earlier crawl exports may contain one empty-text representative. Short nonempty
 texts remain eligible in diagnostic any-language mode. Unmarked boilerplate may
 remain in selected text. This export is an intermediate data format before
-real-site content-quality evaluation and the final reproducibility manifest are complete. Detailed
+real-site content-quality evaluation and final snapshot validation are complete.
+The optional [run manifest](run-manifest.md) records settings and file fingerprints.
+Detailed
 mapping from skipped URLs to their representatives remains a future journal extension.
 
 `write_page_jsonl(output, page)` accepts a page produced by the crawl loop. It

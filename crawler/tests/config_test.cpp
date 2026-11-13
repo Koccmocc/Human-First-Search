@@ -61,6 +61,7 @@ TEST(Config, RejectsAmbiguousMalformedUnknownAndNestedStructures)
         R"({"schema_version":1,"seeds":[true],"allowed_hosts":[]})",
         R"({"schema_version":1,"seeds":["https://example.org/"]})",
         R"({"schema_version":1,"seeds":["https://example.org/"],"allowed_hosts":["example.org"],"output":"data.jsonl"})",
+        R"({"schema_version":1,"seeds":["https://example.org/"],"allowed_hosts":["example.org"],"manifest":"run.json"})",
         R"({"schema_version":1,"seeds":["https://example.org/"],"allowed_hosts":["example.org"],"max_pgaes":3})"}) {
         SCOPED_TRACE(input);
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(hfs::parse_crawl_config(input)));

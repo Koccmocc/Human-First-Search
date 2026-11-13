@@ -44,7 +44,9 @@ class CliCrawl(unittest.TestCase):
             original = config.read_bytes()
             corpus = Path(directory) / "configured corpus.jsonl"
             log = Path(directory) / "configured log.jsonl"
-            configured = self.run_config(config, "--output", str(corpus), "--log", str(log))
+            manifest = Path(directory) / "configured run.json"
+            configured = self.run_config(config, "--output", str(corpus), "--log", str(log),
+                                         "--manifest", str(manifest))
             explicit = self.run_crawl("--seed", BASE + "/language/german", "--seed", BASE + "/language/short",
                                       "--max-pages", "1", language="en")
             self.assertEqual(self.summary(configured), self.summary(explicit))
@@ -56,12 +58,17 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual([page["url"] for page in pages], configured.stdout.splitlines())
             self.assertEqual(len(events), 3)
             self.assertEqual(config.read_bytes(), original)
+            metadata = json.loads(manifest.read_bytes())
+            self.assertEqual(metadata["configuration"]["seeds"], values["seeds"])
+            self.assertEqual(metadata["configuration"]["language"], "en")
+            self.assertEqual(metadata["summary"]["pages"], 1)
 
     def test_invalid_configs_fail_before_creating_outputs_or_requesting_seeds(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "invalid.json"
             corpus = Path(directory) / "never-created.jsonl"
             log = Path(directory) / "never-created-log.jsonl"
+            manifest = Path(directory) / "never-created-run.json"
             valid = {"schema_version": 1, "seeds": [BASE + "/must-not-follow"], "allowed_hosts": ["127.0.0.1"]}
             cases = ["broken", json.dumps(dict(valid, schema_version=2)), json.dumps(dict(valid, max_pages=0)),
                      json.dumps(dict(valid, allowed_hosts=["outside.invalid"])), json.dumps(dict(valid, language="de")),
@@ -69,11 +76,13 @@ class CliCrawl(unittest.TestCase):
             for body in cases:
                 with self.subTest(body=body):
                     config.write_text(body, encoding="utf-8")
-                    result = self.run_config(config, "--output", str(corpus), "--log", str(log))
+                    result = self.run_config(config, "--output", str(corpus), "--log", str(log),
+                                             "--manifest", str(manifest))
                     self.assertEqual(result.returncode, 2, result.stderr)
                     self.assertEqual(result.stdout, "")
                     self.assertFalse(corpus.exists())
                     self.assertFalse(log.exists())
+                    self.assertFalse(manifest.exists())
 
     def test_config_file_failures_and_output_collision_preserve_config(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -88,6 +97,84 @@ class CliCrawl(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertEqual(result.stdout, "")
             self.assertEqual(config.read_bytes(), original)
+
+    def test_manifest_fingerprints_closed_multiblock_files_and_records_effective_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "large corpus.jsonl"
+            log = Path(directory) / "journal.jsonl"
+            manifest = Path(directory) / "run.json"
+            before_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            result = self.run_crawl("--seed", BASE + "/manifest/large#discarded", "--max-pages", "1",
+                                    "--max-depth", "0", "--output", str(corpus), "--log", str(log),
+                                    "--manifest", str(manifest))
+            after_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+            summary = self.summary(result)
+            record = json.loads(manifest.read_bytes())
+            self.assertEqual(record["schema_version"], 1)
+            self.assertIs(record["completed"], True)
+            self.assertEqual(record["application"]["name"], "HumanFirstSearch")
+            self.assertEqual(record["build"]["compiler"], "GNU")
+            self.assertEqual(record["build"]["cplusplus"], 202002)
+            self.assertTrue(record["build"]["compiler_version"])
+            self.assertEqual(record["processing"], {"extractor": "semantic-text-v2",
+                "url_normalization": "lexbor-url-v1", "language_detection": "cld2-compact-v1"})
+            self.assertEqual(record["configuration"], {"schema_version": 1,
+                "seeds": [BASE + "/manifest/large"], "allowed_hosts": ["127.0.0.1"],
+                "max_pages": 1, "max_targets": 5000, "max_depth": 0, "max_pending": 1000,
+                "max_urls": 5000, "max_duration_ms": 1800000, "delay_ms": 0, "language": "any"})
+            self.assertEqual(record["summary"], {key: value if key == "stop" else int(value)
+                                                for key, value in summary.items()})
+            self.assertGreater(corpus.stat().st_size, 64 * 1024)
+            for key, path in (("corpus", corpus), ("journal", log)):
+                raw = path.read_bytes()
+                self.assertEqual(record["artifacts"][key], {"path": path.resolve().as_posix(),
+                    "bytes": len(raw), "sha256": "sha256:" + hashlib.sha256(raw).hexdigest()})
+            timing = record["timing"]
+            self.assertLessEqual(before_ms, timing["started_at_unix_ms"])
+            self.assertLessEqual(timing["started_at_unix_ms"], timing["finished_at_unix_ms"])
+            self.assertLessEqual(timing["finished_at_unix_ms"], after_ms)
+            self.assertGreaterEqual(timing["elapsed_ms"], 0)
+            # Replay just the settings, selecting fresh outputs independently.
+            replay = Path(directory) / "replay.json"
+            replay.write_text(json.dumps(record["configuration"]), encoding="utf-8")
+            self.assertEqual(self.summary(self.run_config(replay)), summary)
+
+    def test_manifest_handles_empty_corpus_and_absent_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "empty.jsonl"
+            manifest = Path(directory) / "empty-run.json"
+            result = self.run_crawl("--seed", BASE + "/private/blocked", "--output", str(corpus),
+                                    "--manifest", str(manifest))
+            self.summary(result)
+            record = json.loads(manifest.read_bytes())
+            self.assertEqual(record["summary"]["pages"], 0)
+            self.assertEqual(record["artifacts"]["corpus"]["bytes"], 0)
+            self.assertEqual(record["artifacts"]["corpus"]["sha256"],
+                             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+            self.assertIsNone(record["artifacts"]["journal"])
+            only = Path(directory) / "only-manifest.json"
+            self.summary(self.run_crawl("--seed", BASE + "/language/english", "--max-depth", "0",
+                                        "--manifest", str(only)))
+            self.assertEqual(json.loads(only.read_bytes())["artifacts"], {"corpus": None, "journal": None})
+
+    def test_manifest_destinations_fail_before_http_and_preserve_existing_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            existing = Path(directory) / "existing.json"
+            existing.write_bytes(b"keep this manifest\n")
+            for path in (existing, Path(directory), Path(directory) / "missing" / "run.json"):
+                result = self.run_crawl("--seed", BASE + "/must-not-follow", "--manifest", str(path))
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Manifest", result.stderr)
+            self.assertEqual(existing.read_bytes(), b"keep this manifest\n")
+            for option in ("--output", "--log"):
+                shared = Path(directory) / (option.removeprefix("--") + ".jsonl")
+                alias = str(directory) + "/./" + shared.name
+                result = self.run_crawl("--seed", BASE + "/must-not-follow", option, str(shared),
+                                        "--manifest", alias)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(shared.read_bytes(), b"")
 
     def fetch_time(self, record):
         self.assertRegex(record["fetched_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
