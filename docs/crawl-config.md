@@ -16,6 +16,12 @@ Use fresh output/log/manifest paths. The [five-host report](five-host-pilot-2026
 records the observed distribution, redirect/language cases and extraction limits;
 this is a diagnostic sample, not the final corpus configuration.
 
+`config/pilot-100-pages.json` raises the diagnostic budget to 100 pages and 300
+targets, with depth 2, 1000 pending URLs, 2000 admitted URLs and five minutes of
+scheduling time. It keeps the five-host scope and one-second delay, with two
+English seeds per host. The [100-page report](pilot-100-pages-2026-11-16.md)
+records the observed results, queue saturation and content-review findings.
+
 | Key | Type and meaning |
 | --- | --- |
 | `schema_version` | Required integer `1` |

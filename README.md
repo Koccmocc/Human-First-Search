@@ -152,6 +152,12 @@ rejection and body-fallback noise on SQLite/PostgreSQL. The later
 5/3/5/4/3 distribution under the same config. These remain diagnostic samples;
 the original two-host `config/pilot.json` stays available.
 
+`config/pilot-100-pages.json` provides the next diagnostic step: 100 pages on the
+same five hosts, with a five-minute scheduling budget and depth 2. The
+[100-page pilot report](docs/pilot-100-pages-2026-11-16.md) records a verified
+21/19/21/20/19 page distribution, typed failures, queue saturation and remaining
+content-quality work. These 100 records are an intermediate local corpus.
+
 ## Export JSONL records
 
 Choose a new output file and run from the repository root:
@@ -242,6 +248,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `docs/crawl-log-format.md`: crawl-event JSONL journal contract.
 - `config/pilot.json`: saved parameters for a small live crawl.
 - `config/pilot-five-hosts.json`: wider diagnostic crawl with a negative language probe.
+- `config/pilot-100-pages.json`: larger diagnostic crawl on the same five hosts.
 - `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
 - `docs/run-manifest.md`: run metadata, effective settings and artifact fingerprints.
 - `tools/verify_run.py`: independent, read-only verification of saved run artifacts.
