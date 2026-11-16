@@ -1,5 +1,8 @@
 # Crawl run manifest, schema version 1
 
+For transfer to an indexer, the [handoff packager](indexer-handoff.md#create-a-handoff-archive)
+copies and audits both saved artifacts, keeping this manifest's original bytes.
+
 Select a fresh destination with `--manifest PATH`, in direct CLI or config mode:
 
 ```powershell

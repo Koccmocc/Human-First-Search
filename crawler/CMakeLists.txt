@@ -99,6 +99,10 @@ if(BUILD_TESTING)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_run_test.py")
     set_tests_properties(crawler.verify_run PROPERTIES TIMEOUT 15)
 
+    add_test(NAME crawler.package_run COMMAND "${Python3_EXECUTABLE}" -B
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/package_run_test.py")
+    set_tests_properties(crawler.package_run PROPERTIES TIMEOUT 20)
+
     add_test(NAME crawler.cli_crawl COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/http_fixture.py" "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_crawl_test.py" "$<TARGET_FILE:hfs-crawler>")

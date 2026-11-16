@@ -162,6 +162,18 @@ Its JSON report adds counts by host and text source. It needs a saved corpus
 and the manifest's configuration/processing metadata; it does not rerun the
 language model or assess extraction quality.
 
+Create a portable indexer archive from a completed run with saved corpus and journal:
+
+```powershell
+python tools/package_run.py data/indexer-v4-20261116T164822Z-run.json --output data/indexer-handoff.zip --source-commit b2a706069df65a4d91d5de6219d59ffd3c716053
+```
+
+This example uses the local v4 pilot; select the producing commit for your actual
+snapshot. The tool audits copied artifacts, includes a standalone verifier and
+public docs, and refuses existing destinations. It performs no HTTP requests.
+See the [handoff guide](docs/indexer-handoff.md#create-a-handoff-archive) for path
+overrides, contents and the limits of caller-declared source provenance.
+
 For a wider diagnostic sample, use `--config config/pilot-five-hosts.json` with
 fresh output paths. The [five-host pilot report](docs/five-host-pilot-2026-11-13.md)
 records the initial 20-page sample, a redirect duplicate, a German language
@@ -271,6 +283,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
 - `docs/run-manifest.md`: run metadata, effective settings and artifact fingerprints.
 - `tools/verify_run.py`: independent, read-only verification of saved run artifacts.
+- `tools/package_run.py`: audited ZIP handoff for offline indexer ingestion.
 
 `crawler_core` is a static library so future URL, extraction and export logic can
 be tested without going through `main`. `CliResult` uses `std::variant` to hold
@@ -1061,7 +1074,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 168-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 169-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

@@ -1,8 +1,36 @@
 # Crawler handoff to the indexer
 
-This is the crawler producer's schema-1 contract and ingestion guide. The local
-handoff archive contains a verified 100-page development snapshot. Final corpus
-size/quality and acceptance by the real indexer remain separate integration work.
+This is the crawler producer's schema-1 contract and ingestion guide. Handoff
+archives contain audited saved snapshots. Final corpus size/quality and acceptance
+by the real indexer remain separate integration work.
+
+## Create a handoff archive
+
+From the source checkout, after a successful crawl saved both corpus and journal:
+
+```powershell
+python tools/package_run.py data/indexer-v4-20261116T164822Z-run.json --output data/indexer-handoff.zip --source-commit b2a706069df65a4d91d5de6219d59ffd3c716053
+```
+
+Those example paths/revision refer to the local v4 pilot. For another run, supply
+its own manifest and the full lowercase Git hash of the producing crawler code.
+Do not substitute today's `HEAD` for the revision that produced an older snapshot.
+The caller declares this revision: the manifest currently stores neither a Git
+commit nor a binary hash, so the tool cannot prove that attribution.
+
+The output parent must exist and the `.zip` destination must be fresh. Both saved
+artifacts and the manifest are copied to a temporary workspace, then the copied
+artifacts undergo `--check-pages` verification before ZIP creation. No sites are
+requested. For moved artifacts, add `--corpus PATH --log PATH`; original hashes
+still apply. Missing journals, damaged data and incomplete manifests are rejected.
+
+The tool includes the manifest's effective configuration, an audit report,
+`SOURCE_COMMIT.txt`, the verifier and an explicit list of public docs from the
+packaging checkout. It never scans local data/build directories or personal notes
+for additional contents. Existing destinations are not overwritten. Exit 0 prints
+the new archive's path, byte count, SHA-256 and page count as JSON. Wait for that
+successful exit before transferring the file; process/system interruption during
+the final copy can leave an incomplete destination.
 
 ## Start with the saved snapshot
 
@@ -19,16 +47,19 @@ building C++ or fetching the sites. Both path overrides are intentional: the
 original manifest retains the producing machine's absolute paths, while the
 fingerprints apply to the exact copied bytes. Exit 0 means verification passed.
 
-The bundled run contains 100 accepted English pages: Python 24, RFC Editor 22,
-SQLite 23, PostgreSQL 9 and GNU 22. Its 117 target attempts also include 16 fetch
+The initial 2026-11-16 v4 snapshot contains 100 accepted English pages: Python 24,
+RFC Editor 22, SQLite 23, PostgreSQL 9 and GNU 22. Its 117 target attempts also include 16 fetch
 failures and one unknown-language rejection, recorded in the journal. The
 [extraction review](h2-fallback.md#fresh-handoff-run) records fingerprints,
 selection results and limitations. A successful audit checks the export's
 consistency; it does not certify relevance or boilerplate-free text.
 
+Other archives can have different counts/versions; inspect their manifest and
+audit report. Historical reports in `docs/` describe their own runs.
+
 The crawler source is in the team's
 [`crawler` branch](https://github.com/Grompesto/human-first-search/tree/crawler).
-`SOURCE_COMMIT.txt` identifies the source revision used for this handoff. The
+`SOURCE_COMMIT.txt` records the caller-declared producing revision. The
 repository README documents C++20/GCC/CMake/Ninja builds. Windows MinGW builds
 are verified; other native crawler toolchains/OS builds remain unverified here.
 
@@ -106,13 +137,13 @@ not a confidence probability, relevance score or evidence of human authorship.
 
 ## Acceptance checks and current limits
 
-Confirm that the actual indexer can stream all 100 records, store the full string
-IDs, preserve URL/title/hash metadata, and find a known phrase from a selected
+Confirm that the actual indexer can stream every record counted by the audit,
+store the full string IDs, preserve URL/title/hash metadata, and find a known phrase from a selected
 page. Repeat ingestion to check upsert behavior and test a changed text hash
 under the same page ID. These checks require the real indexer and have not been
 claimed as completed by crawler-only tests.
 
-This development snapshot remains smaller than the planned 500–1000-page corpus.
+The initial 100-page snapshot is smaller than the planned 500–1000-page corpus.
 Body fallback, in-page navigation and directory/archive/release-list content can
 remain. Language admission is statistical, and page sources are quality-review
 signals rather than quality guarantees. The accompanying extraction review
