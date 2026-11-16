@@ -22,6 +22,7 @@ DOCUMENTS = (
     "live-pilot-2026-11-13.md", "five-host-pilot-2026-11-13.md", "pilot-100-pages-2026-11-16.md",
     "pilot-500-pages-2026-11-16.md",
     "export-selection.md",
+    "filtered-corpus-2026-11-16.md",
 )
 
 

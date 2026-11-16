@@ -67,8 +67,11 @@ The remaining 398 records are an offline selection result, not a new crawler run
 or a replacement corpus. Original files/manifests were retained. Inputs and
 matched URLs are saved locally in `build/export-preview.json`.
 
-The trial profile needs a fresh crawl to deliver 500 pages under these rules.
+The subsequent [filtered run](filtered-corpus-2026-11-16.md) delivered 500 pages
+across six hosts, recorded 106 excluded targets and passed the minimums and
+export-policy audit. Its handoff is a separate saved snapshot.
+
 This feature does not remove navigation inside admitted pages, establish article
-quality or eliminate near duplicates. The existing handoff remains the original
-audited 500-record snapshot. Export selection can also omit useful lists, so
+quality or eliminate near duplicates. The earlier unfiltered handoff remains
+available as a baseline. Export selection can also omit useful lists, so
 rules should be reviewed for the intended search corpus.

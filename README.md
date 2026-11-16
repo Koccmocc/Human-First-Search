@@ -215,6 +215,10 @@ fetch; exact URLs and directory `/*` are supported. See
 [export selection](docs/export-selection.md) for matching, accounting and the
 trial `config/pilot-500-filtered.json` profile.
 
+The [filtered corpus report](docs/filtered-corpus-2026-11-16.md) records the saved
+500-page/six-host run: 106 excluded targets, zero exported URL-rule matches,
+comparison with the unfiltered baseline and sampled remaining noise.
+
 Choose a new output file and run from the repository root:
 
 ```powershell

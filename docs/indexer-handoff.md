@@ -34,6 +34,11 @@ the final copy can leave an incomplete destination.
 
 ## Start with the saved snapshot
 
+The latest local handoff is `data/indexer-handoff-filtered-500.zip`: 500 pages
+from six delivering hosts under `url-export-v1`. See the
+[filtered corpus report](filtered-corpus-2026-11-16.md) for provenance, hashes,
+comparison and quality limits. Earlier unfiltered packages remain baseline samples.
+
 Unpack the archive and run from its root with Python 3:
 
 ```powershell
