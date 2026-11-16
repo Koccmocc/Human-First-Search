@@ -109,7 +109,11 @@ Schema version is integer `1`. Required field names and types are the producer
 contract within that schema; incompatible changes require a schema bump.
 Additional metadata fields may be added, so consumers should tolerate unknown
 keys. Extraction-rule changes use `extractor_version`, currently
-`semantic-text-v4`, and can change text/hash without changing URL identity.
+`semantic-text-v5`, and can change text/hash without changing URL identity.
+V5 adds the `title_container` source label; store source labels as versioned
+provenance metadata. Use a current verifier for new exports. The saved filtered
+500-page archive described above retains its original v4 records and source
+revision; [the v5 review](title-container-fallback.md) uses controlled HTML snapshots.
 
 ## A minimal streaming adapter
 

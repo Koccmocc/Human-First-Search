@@ -13,13 +13,13 @@ a schema bump. Start with the [indexer handoff guide](indexer-handoff.md).
 | Field | Current meaning |
 | --- | --- |
 | `schema_version` | Integer `1` |
-| `extractor_version` | `semantic-text-v4`: current `HtmlDocument::main_text()` rules |
+| `extractor_version` | `semantic-text-v5`: current `HtmlDocument::main_text()` rules |
 | `url_normalization_version` | `lexbor-url-v1`: current HTTP(S) URL resolution/serialization rules |
 | `page_id` | `sha256:` plus the SHA-256 of the canonical final URL |
 | `url` | Canonical final HTTP(S) URL, without fragment |
 | `title` | Extracted title; may be empty |
 | `text` | Selected semantic content or filtered body fallback; nonempty for crawl output |
-| `text_source` | Selected branch: `main`, `article`, `main_role`, `heading` or `body` |
+| `text_source` | Selected branch: `main`, `article`, `main_role`, `heading`, `title_container` or `body` |
 | `text_hash` | `sha256:` plus the SHA-256 of the exact `text` bytes |
 | `language` | Detected CLD2 code, normally `en`; `null` for unknown text admitted in diagnostic mode or absent analysis |
 | `language_percent` | Dominant-language share of classified text; `null` if no code is available |
@@ -36,9 +36,10 @@ belongs to extraction; hashing and serialization do not additionally normalize
 Unicode or whitespace. Bump the corresponding version tag when extraction or
 URL normalization rules change.
 
-`semantic-text-v4` chooses the first nonempty HTML `main`, otherwise the first
+`semantic-text-v5` chooses the first nonempty HTML `main`, otherwise the first
 nonempty HTML `article`, otherwise the first nonempty HTML element with exact
-`role="main"`, otherwise the heading fallback below, otherwise filtered body.
+`role="main"`, otherwise the heading fallback below, otherwise title-container
+selection, otherwise filtered body.
 The role branch reports `main_role`.
 It trims HTML ASCII whitespace and accepts only the single lowercase role;
 role lists and broader ARIA role resolution are not implemented.
@@ -58,6 +59,13 @@ the parent. It does not climb through title wrappers or resolve multiple h1s.
 The byte gate is a conservative extraction heuristic, separate from the language
 detector's Unicode-scalar threshold. See [the fallback review](heading-fallback.md).
 
+The `title_container` branch selects a unique direct body div/section beginning
+with the full normalized document title in a block wrapper, optionally nested
+once inside its leading wrapper. It requires 200 normalized UTF-8 bytes after
+that leading child and preserves the whole candidate's filtered text, including
+its title, TOC and introduction. See the [v5 review](title-container-fallback.md)
+for exact guards and limits. The previous semantic/heading branches keep priority.
+
 `text_source` exposes the chosen branch. The source `body` still applies the
 semantic skip rules and can retain unmarked site chrome. This is a tag-based
 heuristic without CSS, general ARIA-role resolution or content-quality scoring. Earlier
@@ -69,6 +77,7 @@ while leaving their URL-based IDs unchanged.
 Version v3 adds `heading`; older semantic branches keep their previous priority.
 Version v4 extends that branch to a unique h2 on documents without h1, retaining
 the same source label and content gate. See the [controlled h2 review](h2-fallback.md).
+Version v5 adds `title_container`; older selection branches are unchanged.
 Unmarked boilerplate within a heading region can remain, and useful text before
 the heading or outside its parent can be omitted. The heuristic does not prove
 that the selected region is a complete article.

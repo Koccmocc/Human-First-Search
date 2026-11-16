@@ -130,6 +130,10 @@ class Handler(BaseHTTPRequestHandler):
             "/language/english-two": '<main>' + SECOND_ENGLISH_TEXT + '</main>',
             "/content/h2": '<div>Menu<a href="/content/outside">Outside child</a></div>'
                            '<h2>Library</h2><p>' + ENGLISH_TEXT + '</p>',
+            "/content/title-container": '<title>Library</title><div>Menu<a href="/content/outside">Outside</a></div>'
+                                        '<div><div><div>Library</div><p>Contents: One, Two</p></div>'
+                                        '<p>' + ENGLISH_TEXT + '</p><h1>One</h1><p>First section</p>'
+                                        '<h1>Two</h1><p>Second section</p></div>',
             "/content/heading": '<div>Site prelude <a href="/content/outside">Outside child</a></div>'
                                 '<section><p>Inner prelude</p><h1>Library</h1><p>' + ENGLISH_TEXT + '</p></section>'
                                 '<p>Outer tail</p>',

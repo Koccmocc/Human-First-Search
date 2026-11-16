@@ -216,14 +216,16 @@ class VerifyRun(unittest.TestCase):
         self.enable_page_audit()
         first = self.audit_page()
         second = self.audit_page("https://other.example/second", "Different text with \u00e9 and a control \x01.")
-        second["text_source"] = "main"
+        second["text_source"] = "title_container"
+        self.record["processing"]["extractor"] = "semantic-text-v5"
+        first["extractor_version"] = second["extractor_version"] = "semantic-text-v5"
         self.store_pages([first, second])
         before = self.corpus.read_bytes()
         result = self.run_tool(self.manifest, "--check-pages")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["page_audit"], {
             "checked_pages": 2, "pages_by_host": {"example.org": 1, "other.example": 1},
-            "text_sources": {"heading": 1, "main": 1}, "text_characters": len(first["text"]) + len(second["text"])})
+            "text_sources": {"heading": 1, "title_container": 1}, "text_characters": len(first["text"]) + len(second["text"])})
         self.assertEqual(self.corpus.read_bytes(), before)
         self.assertNotIn("page_audit", verify_run(self.manifest))
 

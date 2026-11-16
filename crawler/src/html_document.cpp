@@ -5,6 +5,7 @@
 #include <lexbor/dom/interfaces/element.h>
 
 #include <cstdint>
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -12,6 +13,8 @@
 namespace hfs {
 
 namespace {
+
+constexpr std::size_t minimum_following_bytes{200};
 
 auto is_block(std::uintptr_t tag) -> bool
 {
@@ -152,6 +155,7 @@ auto matches_source(lxb_dom_node_t* node, HtmlTextSource source) -> bool
     case HtmlTextSource::main_role: return has_main_role(node);
     case HtmlTextSource::body: return false;
     case HtmlTextSource::heading: return false;
+    case HtmlTextSource::title_container: return false;
     }
     return false;
 }
@@ -246,13 +250,89 @@ auto select_heading_text(lxb_dom_node_t* root) -> std::optional<HtmlText>
     auto following = extract_text(parent, true, heading->next);
     // A title wrapper or tiny teaser is insufficient evidence to discard the rest
     // of the body. This byte threshold is independent of language admission.
-    constexpr std::size_t minimum_following_bytes{200};
     if (following.size() < minimum_following_bytes) {
         return std::nullopt;
     }
     title += '\n'; // Both heading levels are block boundaries under existing normalization.
     title += following;
     return HtmlText{std::move(title), HtmlTextSource::heading};
+}
+
+auto is_title_container(lxb_dom_node_t* node) -> bool
+{
+    return node->type == LXB_DOM_NODE_TYPE_ELEMENT && node->ns == LXB_NS_HTML &&
+        (node->local_name == LXB_TAG_DIV || node->local_name == LXB_TAG_SECTION ||
+         node->local_name == LXB_TAG_HEADER);
+}
+
+auto first_text_child(lxb_dom_node_t* root) -> lxb_dom_node_t*
+{
+    for (auto* child = root->first_child; child != nullptr; child = child->next) {
+        if (skip_text(child, true)) {
+            continue;
+        }
+        if (child->type == LXB_DOM_NODE_TYPE_TEXT) {
+            const auto& data = lxb_dom_interface_character_data(child)->data;
+            BodyText text;
+            if (data.length != 0) {
+                text.append({reinterpret_cast<const char*>(data.data), data.length});
+            }
+            if (!text.value.empty()) {
+                return child; // Do not jump over a real introduction looking for a title.
+            }
+        } else if (child->type == LXB_DOM_NODE_TYPE_ELEMENT && !extract_text(child, true).empty()) {
+            return child;
+        }
+    }
+    return nullptr;
+}
+
+auto matches_title(lxb_dom_node_t* node, std::string_view title) -> bool
+{
+    if (node == nullptr || node->type != LXB_DOM_NODE_TYPE_ELEMENT || node->ns != LXB_NS_HTML) {
+        return false;
+    }
+    const auto tag = node->local_name;
+    if (!is_title_container(node) && tag != LXB_TAG_H1 && tag != LXB_TAG_H2 &&
+        tag != LXB_TAG_H3 && tag != LXB_TAG_H4 && tag != LXB_TAG_H5 && tag != LXB_TAG_H6) {
+        return false;
+    }
+    BodyText normalized;
+    normalized.append(extract_text(node, true));
+    return normalized.value == title;
+}
+
+auto select_title_container(lxb_dom_node_t* body, std::string_view document_title) -> std::optional<HtmlText>
+{
+    BodyText title;
+    title.append(document_title);
+    if (title.value.empty()) {
+        return std::nullopt;
+    }
+    std::optional<HtmlText> selected;
+    for (auto* node = body->first_child; node != nullptr; node = node->next) {
+        if (!is_title_container(node) || node->local_name == LXB_TAG_HEADER || skip_text(node, true)) {
+            continue;
+        }
+        auto* first = first_text_child(node);
+        if (first == nullptr || first->next == nullptr) {
+            continue;
+        }
+        bool titled = matches_title(first, title.value);
+        if (!titled && is_title_container(first)) {
+            // Allow one leading wrapper around the title (for example title + TOC).
+            // Bounded unwrapping over disjoint body children keeps total work linear.
+            titled = matches_title(first_text_child(first), title.value);
+        }
+        if (!titled || extract_text(node, true, first->next).size() < minimum_following_bytes) {
+            continue;
+        }
+        if (selected) {
+            return std::nullopt; // Several matching regions are ambiguous.
+        }
+        selected = HtmlText{extract_text(node, true), HtmlTextSource::title_container};
+    }
+    return selected;
 }
 
 } // namespace
@@ -333,6 +413,9 @@ auto HtmlDocument::main_text() const -> HtmlText
         return std::move(*selected);
     }
     if (auto selected = select_heading_text(body)) {
+        return std::move(*selected);
+    }
+    if (auto selected = select_title_container(body, title())) {
         return std::move(*selected);
     }
     return HtmlText{extract_text(body, true), HtmlTextSource::body};

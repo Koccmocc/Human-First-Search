@@ -23,6 +23,7 @@ DOCUMENTS = (
     "pilot-500-pages-2026-11-16.md",
     "export-selection.md",
     "filtered-corpus-2026-11-16.md",
+    "title-container-fallback.md",
 )
 
 

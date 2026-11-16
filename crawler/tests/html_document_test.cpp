@@ -338,6 +338,84 @@ TEST(HtmlDocument, HeadingFallbackSupportsDeepContainersIteratively)
     EXPECT_EQ(selected.text, "Deep heading\n" + std::string(200, 'p'));
 }
 
+TEST(HtmlDocument, TitleContainerSelectsDirectBodyRegionAndPreservesDiscoveryAndBodyText)
+{
+    const std::string prose(200, 'p');
+    // A plain title div reflects legacy documentation without semantic containers.
+    for (const auto* tag : {"div", "section"}) {
+        const hfs::HtmlDocument document{"<title>  Caf&#233; &amp; Books </title>"
+            "<div>Site menu<a href='/outside'>Outside</a></div><" + std::string{tag} + ">"
+            "<div> Caf&#233; &amp; <span>Books</span> </div><p>" + prose + "</p></" + tag + ">"};
+        EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::title_container);
+        EXPECT_EQ(document.main_text().text, "Caf\xC3\xA9 & Books\n" + prose);
+        EXPECT_NE(document.body_text().find("Site menu"), std::string::npos);
+        EXPECT_EQ(document.links(), (std::vector<std::string>{"/outside"}));
+    }
+}
+
+TEST(HtmlDocument, TitleContainerKeepsTocIntroductionAndMultipleSectionHeadings)
+{
+    const std::string introduction(200, 'i');
+    // The leading wrapper contains a title-only div followed by a table of contents.
+    const hfs::HtmlDocument document{"<title>Guide</title><div>Menu</div><div>"
+        "<div><div>Guide</div><p>Contents: One, Two</p></div>"
+        "<p>" + introduction + "</p><h1>One</h1><p>First section</p>"
+        "<h1>Two</h1><p>Second section</p></div><p>Outside tail</p>"};
+    EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::title_container);
+    EXPECT_EQ(document.main_text().text, "Guide\nContents: One, Two\n" + introduction +
+        "\nOne\nFirst section\nTwo\nSecond section");
+}
+
+TEST(HtmlDocument, TitleContainerRequiresUniqueTitleMatchAndFollowingContent)
+{
+    const std::string prose(200, 'p');
+    const auto region = "<div><div>Guide</div><p>" + prose + "</p></div>";
+    for (const auto& html : {region, "<title>Other guide</title>" + region,
+        "<title>Guide</title>" + region + region,
+        "<title>Guide</title><div><div>Guide</div><p>" + std::string(199, 'p') + "</p></div>",
+        "<title>Guide</title><div><div>Guide</div></div><p>" + prose + "</p>",
+        "<title>Guide</title><div>Introduction<div>Guide</div><p>" + prose + "</p></div>",
+        "<title>Guide</title><div><p>Guide</p><p>" + prose + "</p></div>"}) {
+        EXPECT_EQ(hfs::HtmlDocument{html}.main_text().source, hfs::HtmlTextSource::body) << html;
+    }
+    const hfs::HtmlDocument filtered{"<title>Guide</title><div hidden>" + region + "</div>"
+        "<div><nav>Menu</nav><!-- comment --><div>Guide</div><p>" + prose + "</p><footer>Footer</footer></div>"};
+    EXPECT_EQ(filtered.main_text().text, "Guide\n" + prose);
+    EXPECT_EQ(filtered.main_text().source, hfs::HtmlTextSource::title_container);
+}
+
+TEST(HtmlDocument, TitleContainerRetainsOlderSelectionPriority)
+{
+    const auto region = "<title>Guide</title><div><div>Guide</div><p>" + std::string(200, 'p') + "</p></div>";
+    for (const auto* tag : {"main", "article", "section role=main"}) {
+        const auto closing = std::string{tag}.substr(0, std::string{tag}.find(' '));
+        const hfs::HtmlDocument document{region + "<" + tag + ">Preferred</" + closing + ">"};
+        EXPECT_EQ(document.main_text().text, "Preferred");
+        EXPECT_NE(document.main_text().source, hfs::HtmlTextSource::title_container);
+    }
+    const hfs::HtmlDocument heading{region + "<h1>Heading</h1><p>" + std::string(200, 'h') + "</p>"};
+    EXPECT_EQ(heading.main_text().source, hfs::HtmlTextSource::heading);
+}
+
+TEST(HtmlDocument, TitleContainerBoundsUnwrappingAndUsesNormalizedUtf8ByteGate)
+{
+    std::string text;
+    for (int count = 0; count < 100; ++count) {
+        text += "\xC3\xA9";
+    }
+    const hfs::HtmlDocument unicode{"<title>Guide</title><div><header>Guide</header><p> " + text + " </p></div>"};
+    EXPECT_EQ(unicode.main_text().source, hfs::HtmlTextSource::title_container);
+    EXPECT_EQ(unicode.main_text().text, "Guide\n" + text);
+    const hfs::HtmlDocument deep_title{"<title>Guide</title><div><div><div><div>Guide</div>"
+        "<p>Inner contents</p></div></div><p>" + std::string(200, 'p') + "</p></div>"};
+    EXPECT_EQ(deep_title.main_text().source, hfs::HtmlTextSource::body);
+    std::string deep{"<title>Guide</title>"};
+    for (int count = 0; count < 2000; ++count) deep += "<div>";
+    deep += "<div>Guide</div><p>" + std::string(200, 'p') + "</p>";
+    for (int count = 0; count < 2000; ++count) deep += "</div>";
+    EXPECT_EQ(hfs::HtmlDocument{deep}.main_text().source, hfs::HtmlTextSource::body);
+}
+
 TEST(HtmlDocument, MainTextUsesFilteredBodyWhenNoUsableContainerExists)
 {
     const hfs::HtmlDocument document{

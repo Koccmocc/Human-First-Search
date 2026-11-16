@@ -38,7 +38,7 @@ TEST(Jsonl, SerializesPageFieldsCapturedTimeAndUnknownLanguage)
     hfs::write_page_jsonl(output, page);
     const auto record = nlohmann::json::parse(output.str());
     EXPECT_EQ(record.at("schema_version"), 1);
-    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v4");
+    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v5");
     EXPECT_EQ(record.at("text_source"), "body");
     EXPECT_EQ(record.at("url_normalization_version"), "lexbor-url-v1");
     EXPECT_EQ(record.at("url"), page.url);
@@ -64,7 +64,7 @@ TEST(Jsonl, SerializesMainRoleSourceWithUpdatedExtractorVersion)
     hfs::write_page_jsonl(output, page);
     const auto record = nlohmann::json::parse(output.str());
     EXPECT_EQ(record.at("text_source"), "main_role");
-    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v4");
+    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v5");
 }
 
 TEST(Jsonl, SerializesHeadingSourceWithUpdatedExtractorVersion)
@@ -75,7 +75,7 @@ TEST(Jsonl, SerializesHeadingSourceWithUpdatedExtractorVersion)
     hfs::write_page_jsonl(output, page);
     const auto record = nlohmann::json::parse(output.str());
     EXPECT_EQ(record.at("text_source"), "heading");
-    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v4");
+    EXPECT_EQ(record.at("extractor_version"), "semantic-text-v5");
 }
 
 TEST(Jsonl, PreservesDetectedAndUnknownLanguageMetadata)

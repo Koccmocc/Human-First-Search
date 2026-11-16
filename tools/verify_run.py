@@ -131,7 +131,7 @@ class PageAudit:
         for field, value in self.versions.items():
             require(page.get(field) == value, f"{field} differs from manifest processing version")
         source = page.get("text_source")
-        require(source in ("main", "article", "main_role", "heading", "body"), "Unknown text_source")
+        require(source in ("main", "article", "main_role", "heading", "title_container", "body"), "Unknown text_source")
         require(type(page.get("http_status")) is int and page["http_status"] == 200, "Expected http_status 200")
         depth = nonnegative_integer(page.get("depth"), "page.depth")
         require(depth <= self.max_depth, "Page depth exceeds configured maximum")
