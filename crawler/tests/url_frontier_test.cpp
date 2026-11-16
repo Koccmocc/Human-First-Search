@@ -209,6 +209,47 @@ TEST(UrlFrontier, RequiresPositiveQueueAndTotalLimits)
 {
     EXPECT_THROW((hfs::UrlFrontier{{"example.org"}, {0, 10, 3}}), std::invalid_argument);
     EXPECT_THROW((hfs::UrlFrontier{{"example.org"}, {10, 0, 3}}), std::invalid_argument);
+    EXPECT_THROW((hfs::UrlFrontier{{"example.org"}, {10, 10, 3, 0}}), std::invalid_argument);
+}
+
+TEST(UrlFrontier, HostCapCountsAllDepthsAndFreesSpaceAfterPopping)
+{
+    hfs::UrlFrontier frontier{{"a.org", "b.org"}, {6, 20, 3, 2}};
+    ASSERT_EQ(frontier.add_seed("https://a.org/seed"), EnqueueResult::added);
+    ASSERT_EQ(frontier.add_link({"https://a.org/seed", 0}, "/child"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://a.org/later"), EnqueueResult::host_queue_full);
+    ASSERT_EQ(frontier.add_seed("https://b.org/1"), EnqueueResult::added);
+    ASSERT_EQ(frontier.add_seed("https://b.org/2"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://b.org/3"), EnqueueResult::host_queue_full);
+    EXPECT_EQ(frontier.size(), 4U); // Global room remains available to other hosts.
+    const auto first = frontier.pop();
+    ASSERT_TRUE(first);
+    EXPECT_EQ(first->url, "https://a.org/seed");
+    EXPECT_EQ(frontier.add_seed("https://a.org/later"), EnqueueResult::added);
+    EXPECT_EQ(frontier.admission_counts().host_queue_full, 2U);
+    EXPECT_EQ(frontier.accepted_count(), 5U); // Rejected offers were not remembered.
+}
+
+TEST(UrlFrontier, HostCapGroupsCanonicalNamesAcrossSchemesAndPortsButNotSubdomains)
+{
+    hfs::UrlFrontier frontier{{"a.org", "sub.a.org"}, {5, 20, 3, 1}};
+    ASSERT_EQ(frontier.add_seed("HTTP://A.ORG:80/1"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://a.org/2"), EnqueueResult::host_queue_full);
+    EXPECT_EQ(frontier.add_seed("http://a.org:8080/3"), EnqueueResult::host_queue_full);
+    EXPECT_EQ(frontier.add_seed("http://a.org/1#part"), EnqueueResult::duplicate);
+    EXPECT_EQ(frontier.add_seed("https://sub.a.org/1"), EnqueueResult::added);
+    EXPECT_EQ(frontier.admission_counts().host_queue_full, 2U);
+}
+
+TEST(UrlFrontier, ExistingGlobalLimitChecksPrecedeTheOptionalHostCap)
+{
+    hfs::UrlFrontier frontier{{"a.org", "b.org"}, {1, 2, 1, 1}};
+    ASSERT_EQ(frontier.add_seed("https://a.org/1"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://a.org/2"), EnqueueResult::queue_full);
+    ASSERT_TRUE(frontier.pop());
+    ASSERT_EQ(frontier.add_seed("https://b.org/1"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://b.org/2"), EnqueueResult::url_limit);
+    EXPECT_EQ(frontier.admission_counts().host_queue_full, 0U);
 }
 
 TEST(UrlFrontier, CountsOneOutcomePerCompletedAdmissionWithExistingCheckPriority)

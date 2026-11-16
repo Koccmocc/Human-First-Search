@@ -195,6 +195,23 @@ class VerifyRun(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Rejected seed"):
             verify_run(self.manifest)
 
+    def test_optional_host_capacity_counter_counts_rejected_seeds_and_requires_core_group(self):
+        counts = {"admission_" + key: 0 for key in
+                  ("added", "duplicate", "invalid_url", "out_of_scope", "depth_limit", "queue_full", "url_limit")}
+        self.record["summary"].update(counts, admission_added=2, admission_host_queue_full=3, rejected_seeds=3)
+        self.save_manifest()
+        verify_run(self.manifest)
+        for invalid in (-1, True):
+            self.record["summary"]["admission_host_queue_full"] = invalid
+            self.save_manifest()
+            with self.assertRaises(ValueError):
+                verify_run(self.manifest)
+        self.record["summary"]["admission_host_queue_full"] = 3
+        del self.record["summary"]["admission_added"]
+        self.save_manifest()
+        with self.assertRaises(ValueError):
+            verify_run(self.manifest)
+
     def test_page_audit_checks_utf8_hashes_and_reports_host_and_source_counts(self):
         self.enable_page_audit()
         first = self.audit_page()

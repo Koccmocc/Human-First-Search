@@ -18,6 +18,8 @@ struct FrontierLimits {
     std::size_t max_pending{1000};
     std::size_t max_urls{5000};
     std::size_t max_depth{3};
+    // Across all depths for one canonical host; nullopt keeps only global limits.
+    std::optional<std::size_t> max_pending_per_host{};
 };
 
 struct CrawlTarget {
@@ -25,7 +27,7 @@ struct CrawlTarget {
     std::size_t depth{};
 };
 
-enum class EnqueueResult { added, duplicate, invalid_url, out_of_scope, depth_limit, queue_full, url_limit };
+enum class EnqueueResult { added, duplicate, invalid_url, out_of_scope, depth_limit, queue_full, url_limit, host_queue_full };
 
 struct AdmissionCounts {
     std::size_t added{};
@@ -35,6 +37,7 @@ struct AdmissionCounts {
     std::size_t depth_limit{};
     std::size_t queue_full{};
     std::size_t url_limit{};
+    std::size_t host_queue_full{};
 };
 
 // Single-threaded breadth-first traversal, with round-robin hosts at each depth.
@@ -59,6 +62,7 @@ private:
 
     auto enqueue(std::string_view base, std::string_view reference, std::size_t depth) -> EnqueueResult;
     auto record(EnqueueResult result) noexcept -> EnqueueResult;
+    auto pending_for_host(std::string_view host) const noexcept -> std::size_t;
 
     std::vector<std::string> allowed_hosts_;
     FrontierLimits limits_;

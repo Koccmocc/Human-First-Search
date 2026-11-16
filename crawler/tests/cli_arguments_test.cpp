@@ -186,10 +186,21 @@ TEST(CliArguments, RejectsUrlsPortsCredentialsAndControlCharactersAsHosts)
     }
 }
 
+TEST(CliArguments, ParsesAnOptionalPositivePendingHostCap)
+{
+    const auto result = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+                               "--max-pending-per-host", "12"});
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+    EXPECT_EQ(std::get<hfs::CrawlCommand>(result).options.frontier.max_pending_per_host, 12U);
+    const auto defaults = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org"});
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(defaults));
+    EXPECT_FALSE(std::get<hfs::CrawlCommand>(defaults).options.frontier.max_pending_per_host);
+}
+
 TEST(CliArguments, RejectsMalformedOverflowingOrRepeatedNumericOptions)
 {
     for (const auto* option : {"--max-pages", "--max-targets", "--max-depth", "--max-pending", "--max-urls",
-                              "--delay-ms", "--max-duration-ms"}) {
+                              "--delay-ms", "--max-duration-ms", "--max-pending-per-host"}) {
         for (const auto* value : {"", "-1", "+1", " 1", "1 ", "1.5", "1x", "18446744073709551616"}) {
             SCOPED_TRACE(std::string{option} + " " + value);
             EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
@@ -198,7 +209,7 @@ TEST(CliArguments, RejectsMalformedOverflowingOrRepeatedNumericOptions)
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
             "--allow-host", "example.org", option, "1", option, "2"})));
     }
-    for (const auto* option : {"--max-pages", "--max-targets", "--max-pending", "--max-urls", "--max-duration-ms"}) {
+    for (const auto* option : {"--max-pages", "--max-targets", "--max-pending", "--max-urls", "--max-duration-ms", "--max-pending-per-host"}) {
         EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
             "--allow-host", "example.org", option, "0"})));
     }

@@ -25,6 +25,7 @@ manifest's flat `summary` object expose matching integer fields:
 | `admission_depth_limit` | Parent already at/beyond maximum link depth |
 | `admission_queue_full` | Pending-entry capacity reached |
 | `admission_url_limit` | Total admitted-URL budget exhausted |
+| `admission_host_queue_full` | Optional per-host pending cap reached (newer manifests) |
 
 Each call records exactly one result under the existing checks. For links, depth
 is checked before resolving the reference, so even an invalid reference can be
@@ -33,12 +34,12 @@ total-URL and pending-capacity checks, in that order. If both capacities are
 exhausted, the URL-budget reason wins. This observes existing behavior rather
 than changing admission, ordering, retries or processing versions.
 
-The sum of the seven counters is the number of completed admission attempts.
+The sum of the reported counters is the number of completed admission attempts.
 For a normally returned crawl:
 
 ```text
 admission_added = targets + pending_urls
-rejected_seeds <= sum(all six rejected-admission counters)
+rejected_seeds <= sum(all reported rejected-admission counters)
 ```
 
 `rejected_seeds` remains a seed-only count. `duplicate_pages` remains a completed
@@ -58,11 +59,13 @@ on real sites. These counters are separate from HTTP/fetch failures. A high
 queue-full count can guide capacity/source-selection review, but does not by
 itself establish that increasing the queue will improve the final corpus.
 
-The schema version remains 1; the seven summary fields are additive. Earlier
-manifests may omit the entire group, meaning unknown counts. `verify_run.py`
-accepts that absence. If any admission field is present, all seven must be
-nonnegative integers, and the two relations above must hold. Missing/partial
-groups are not silently treated as zero.
+The schema version remains 1. Earlier manifests may omit the entire group,
+meaning unknown counts. `verify_run.py` accepts that absence and the original
+complete seven-counter group. Newer manifests also report the optional eighth
+`admission_host_queue_full` counter. If any field is present, the original seven
+are required; every supplied counter must be a nonnegative integer and the two
+relations above must hold. Missing counts are not silently treated as zero.
+See the [per-host cap](pending-host-cap.md) for the new check's meaning and priority.
 
 ## Validation
 
@@ -111,3 +114,6 @@ Journal: 104 records, 34216 bytes, SHA-256
 These observations and hashes identify this run, not expected values for future
 live content. The counters supply diagnostics; they do not fix queue saturation
 or the remaining content-quality issues.
+
+The later [per-host pending cap](pending-host-cap.md) adds an optional backlog
+bound and compares both global and host-cap rejection counts under the same scope.

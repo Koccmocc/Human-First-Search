@@ -85,7 +85,7 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
                                          [option](const auto& item) { return item.name == option; });
         if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" &&
             option != "--output" && option != "--log" && option != "--max-duration-ms" &&
-            option != "--language" && option != "--manifest" && limit == limits.end()) {
+            option != "--language" && option != "--manifest" && option != "--max-pending-per-host" && limit == limits.end()) {
             return hfs::CliError{"Unknown argument: " + std::string{option}};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--")) {
@@ -139,6 +139,8 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
                 } else {
                     command.options.max_duration = duration;
                 }
+            } else if (option == "--max-pending-per-host") {
+                command.options.frontier.max_pending_per_host = *number;
             } else {
                 *limit->value = *number;
             }
@@ -207,6 +209,7 @@ auto help_text() noexcept -> std::string_view
            "  --max-duration-ms N Stop starting queue targets after N ms (default 1800000).\n"
            "  --max-depth N       Link depth; seeds are zero (default 3).\n"
            "  --max-pending N     Pending queue capacity (default 1000).\n"
+           "  --max-pending-per-host N  Optional positive pending cap per canonical host (default disabled).\n"
            "  --max-urls N        Total admitted URL limit (default 5000).\n"
            "  --delay-ms N        Per-host request interval (default 1000; zero for local tests).\n"
            "  --output PATH       Write a new JSONL file; parent directory must exist.\n"

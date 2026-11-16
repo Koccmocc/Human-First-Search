@@ -64,6 +64,7 @@ the entire command before any request occurs.
 | `--max-duration-ms N` | 1800000 | Elapsed-time budget before starting another queue target |
 | `--max-depth N` | 3 | Maximum link depth; seeds have depth zero |
 | `--max-pending N` | 1000 | Pending queue capacity |
+| `--max-pending-per-host N` | disabled | Optional positive pending cap per canonical host across all depths |
 | `--max-urls N` | 5000 | Total admitted unique URL budget |
 | `--delay-ms N` | 1000 | Per-host interval, shared by robots and page requests |
 | `--language en\|any` | en | Admit detected English; any enables diagnostic exports of all nonempty text |
@@ -82,7 +83,7 @@ exist; destinations already present at the preflight check are rejected. Stderr
 contains a single session summary such as:
 
 ```text
-crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 non_english_pages=0 unknown_language_pages=0 rejected_seeds=0 pending_urls=0 admission_added=4 admission_duplicate=2 admission_invalid_url=0 admission_out_of_scope=1 admission_depth_limit=0 admission_queue_full=0 admission_url_limit=0
+crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 non_english_pages=0 unknown_language_pages=0 rejected_seeds=0 pending_urls=0 admission_added=4 admission_duplicate=2 admission_invalid_url=0 admission_out_of_scope=1 admission_depth_limit=0 admission_queue_full=0 admission_url_limit=0 admission_host_queue_full=0
 ```
 
 Exit `0` means the session completed normally, including a configured limit or
@@ -97,12 +98,18 @@ invalid inputs. `crawler.cli_crawl` uses the real executable against the local
 fixture to verify discovery, limits, validation before requests and failed-page
 statistics. It needs no internet.
 
-The CLI summary and run manifest also expose seven `admission_*` counters for
+The CLI summary and run manifest also expose `admission_*` counters for
 completed seed/link offers: added, duplicate, invalid URL, out of scope, depth
-limit, queue full and total URL limit. Repeated rejected offers count separately;
+limit, queue full, total URL limit and the optional host cap. Repeated rejected offers count separately;
 they do not count unique lost pages. See [frontier admission](docs/frontier-admission.md)
 for check priority and accounting rules. These counters explain queue pressure
 without changing the crawl policy.
+
+`--max-pending-per-host` bounds one host's backlog while global space is still
+available for others. It is disabled unless supplied. The
+[host-cap contract](docs/pending-host-cap.md) explains cross-depth accounting and
+the capacity tradeoff; `config/pilot-100-host-cap.json` enables 200 per host in
+the existing 100-page diagnostic scope.
 
 ## Run from a saved configuration
 
@@ -256,6 +263,7 @@ nested project's compilation database; nested `.vscode` settings are not applied
 - `config/pilot.json`: saved parameters for a small live crawl.
 - `config/pilot-five-hosts.json`: wider diagnostic crawl with a negative language probe.
 - `config/pilot-100-pages.json`: larger diagnostic crawl on the same five hosts.
+- `config/pilot-100-host-cap.json`: comparison profile with 200 pending URLs per host.
 - `docs/crawl-config.md`: configuration schema and CLI file-loading rules.
 - `docs/run-manifest.md`: run metadata, effective settings and artifact fingerprints.
 - `tools/verify_run.py`: independent, read-only verification of saved run artifacts.
@@ -1047,7 +1055,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 160-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 165-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

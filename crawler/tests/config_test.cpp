@@ -34,6 +34,22 @@ TEST(Config, ParsesOwningCanonicalOptionsInSeedOrder)
     EXPECT_FALSE(command.log_path);
 }
 
+TEST(Config, ReadsOptionalHostCapWithoutAcceptingNullZeroOrCoercedValues)
+{
+    for (const auto* value : {"12", "0", "null", "true", "\"12\"", "1.5"}) {
+        std::string input{minimal};
+        input.pop_back();
+        input += ",\"max_pending_per_host\":" + std::string{value} + "}";
+        const auto result = hfs::parse_crawl_config(input);
+        if (std::string_view{value} == "12") {
+            ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+            EXPECT_EQ(std::get<hfs::CrawlCommand>(result).options.frontier.max_pending_per_host, 12U);
+        } else {
+            EXPECT_TRUE(std::holds_alternative<hfs::CliError>(result));
+        }
+    }
+}
+
 TEST(Config, PreservesDefaultsForOmittedOptionsAndAcceptsUtf8Bom)
 {
     for (const auto& input : {std::string{minimal}, std::string{"\xEF\xBB\xBF"} + std::string{minimal}}) {

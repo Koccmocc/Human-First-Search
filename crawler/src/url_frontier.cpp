@@ -10,7 +10,7 @@ namespace hfs {
 UrlFrontier::UrlFrontier(std::vector<std::string> allowed_hosts, FrontierLimits limits)
     : allowed_hosts_{std::move(allowed_hosts)}, limits_{limits}
 {
-    if (limits_.max_pending == 0 || limits_.max_urls == 0) {
+    if (limits_.max_pending == 0 || limits_.max_urls == 0 || limits_.max_pending_per_host == 0) {
         throw std::invalid_argument{"Frontier queue and URL limits must be positive"};
     }
 }
@@ -40,6 +40,7 @@ auto UrlFrontier::record(EnqueueResult result) noexcept -> EnqueueResult
     case EnqueueResult::depth_limit: ++admission_.depth_limit; break;
     case EnqueueResult::queue_full: ++admission_.queue_full; break;
     case EnqueueResult::url_limit: ++admission_.url_limit; break;
+    case EnqueueResult::host_queue_full: ++admission_.host_queue_full; break;
     }
     return result;
 }
@@ -68,6 +69,9 @@ auto UrlFrontier::enqueue(std::string_view base, std::string_view reference,
     const auto host = http_url_host(*url);
     if (!host) {
         return EnqueueResult::invalid_url;
+    }
+    if (limits_.max_pending_per_host && pending_for_host(*host) >= *limits_.max_pending_per_host) {
+        return EnqueueResult::host_queue_full;
     }
     const auto known = known_.insert(*url).first;
     try {
@@ -134,6 +138,21 @@ auto UrlFrontier::accepted_count() const noexcept -> std::size_t
 auto UrlFrontier::admission_counts() const noexcept -> AdmissionCounts
 {
     return admission_;
+}
+
+auto UrlFrontier::pending_for_host(std::string_view host) const noexcept -> std::size_t
+{
+    std::size_t count{};
+    // Derive occupancy from the existing queues, avoiding a second mutable index.
+    for (const auto& [depth, hosts] : pending_) {
+        (void)depth;
+        for (const auto& queue : hosts) {
+            if (queue.host == host) {
+                count += queue.targets.size();
+            }
+        }
+    }
+    return count;
 }
 
 } // namespace hfs

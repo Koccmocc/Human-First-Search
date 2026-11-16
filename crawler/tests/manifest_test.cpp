@@ -26,6 +26,7 @@ TEST(Manifest, RecordsEffectiveDefaultsAndReplayableConfigurationWithSuppliedTim
     command.options.frontier.max_depth = 0;
     command.options.timing.interval = std::chrono::milliseconds{321};
     command.options.http.timeout_ms = 1234;
+    command.options.frontier.max_pending_per_host = 11;
     command.options.language_policy = hfs::CrawlLanguagePolicy::any;
     hfs::CrawlSummary summary;
     summary.stop = hfs::CrawlStop::page_limit;
@@ -73,6 +74,7 @@ TEST(Manifest, RecordsEffectiveDefaultsAndReplayableConfigurationWithSuppliedTim
     EXPECT_EQ(restored.options.frontier.max_depth, 0U);
     EXPECT_EQ(restored.options.frontier.max_pending, command.options.frontier.max_pending);
     EXPECT_EQ(restored.options.frontier.max_urls, command.options.frontier.max_urls);
+    EXPECT_EQ(restored.options.frontier.max_pending_per_host, 11U);
     EXPECT_EQ(restored.options.max_duration, command.options.max_duration);
     EXPECT_EQ(restored.options.timing.interval, command.options.timing.interval);
     EXPECT_EQ(restored.options.language_policy, hfs::CrawlLanguagePolicy::any);
@@ -93,6 +95,7 @@ TEST(Manifest, RecordsEveryStopReasonWithoutInventingPageSuccess)
         EXPECT_EQ(record["summary"]["stop"], name);
         EXPECT_EQ(record["summary"]["pages"], 0);
         EXPECT_EQ(record["configuration"]["language"], "en");
+        EXPECT_FALSE(record["configuration"].contains("max_pending_per_host"));
     }
 }
 

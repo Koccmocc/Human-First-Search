@@ -31,13 +31,16 @@ records the observed results, queue saturation and content-review findings.
 | `max_targets` | Optional positive integer, same as `--max-targets` |
 | `max_depth` | Optional nonnegative integer, same as `--max-depth` |
 | `max_pending` | Optional positive integer, same as `--max-pending` |
+| `max_pending_per_host` | Optional positive integer across one host's pending depths; omitted means disabled |
 | `max_urls` | Optional positive integer, same as `--max-urls` |
 | `max_duration_ms` | Optional positive integer, same scheduling budget as `--max-duration-ms` |
 | `delay_ms` | Optional nonnegative integer, same as `--delay-ms` |
 | `language` | Optional string `en` or `any`, default `en` |
 
-Omitted options use the same defaults as direct CLI mode. The pilot file sets
-every supported crawl option explicitly. HTTP/robots transport settings and
+Omitted options use the same defaults as direct CLI mode. The original pilot
+sets the core limits explicitly and leaves the optional host cap disabled.
+`config/pilot-100-host-cap.json` enables a cap of 200 for the 100-page profile;
+see the [host-cap contract](pending-host-cap.md). HTTP/robots transport settings and
 redirect limits retain the current library defaults; this schema does not expose
 them yet. Numeric strings, floats (including 1.0), booleans, negative counts and
 out-of-range values are rejected. JSON must be UTF-8; an optional UTF-8 BOM is

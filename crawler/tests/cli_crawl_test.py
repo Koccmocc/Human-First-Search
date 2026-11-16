@@ -201,13 +201,30 @@ class CliCrawl(unittest.TestCase):
                 "--max-pending", "1", "--max-urls", "3", "--output", str(corpus), "--manifest", str(manifest))
             summary = self.summary(result)
             expected = {"added": 2, "duplicate": 1, "invalid_url": 1, "out_of_scope": 1,
-                        "depth_limit": 2, "queue_full": 2, "url_limit": 0}
+                        "depth_limit": 2, "queue_full": 2, "url_limit": 0, "host_queue_full": 0}
             record = json.loads(manifest.read_bytes())
             for reason, count in expected.items():
                 key = "admission_" + reason
                 self.assertEqual(summary[key], str(count))
                 self.assertEqual(record["summary"][key], count)
             self.assertEqual(int(summary["admission_added"]), int(summary["targets"]) + int(summary["pending_urls"]))
+            self.verify_saved_run(manifest)
+
+    def test_configured_host_cap_is_recorded_and_distinguished_from_global_capacity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "host-cap.json"
+            corpus = Path(directory) / "corpus.jsonl"
+            manifest = Path(directory) / "run.json"
+            config.write_text(json.dumps({"schema_version": 1, "seeds": [BASE + "/admission/start"],
+                "allowed_hosts": ["127.0.0.1"], "language": "any", "delay_ms": 0,
+                "max_depth": 1, "max_pending": 10, "max_pending_per_host": 1}), encoding="utf-8")
+            result = self.run_config(config, "--output", str(corpus), "--manifest", str(manifest))
+            summary = self.summary(result)
+            self.assertEqual(summary["admission_host_queue_full"], "2")
+            self.assertEqual(summary["admission_queue_full"], "0")
+            record = json.loads(manifest.read_bytes())
+            self.assertEqual(record["configuration"]["max_pending_per_host"], 1)
+            self.assertEqual(record["summary"]["admission_host_queue_full"], 2)
             self.verify_saved_run(manifest)
 
     def test_heading_fallback_exports_selected_text_and_discovers_links_outside_it(self):

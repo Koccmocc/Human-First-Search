@@ -68,12 +68,15 @@ void write_run_manifest(std::ostream& output, const CrawlCommand& command,
 {
     const auto& options = command.options;
     // This section can be saved separately and passed directly to --config.
-    const Json configuration{
+    Json configuration{
         {"schema_version", 1}, {"seeds", command.seeds}, {"allowed_hosts", command.allowed_hosts},
         {"max_pages", options.max_pages}, {"max_targets", options.max_targets},
         {"max_depth", options.frontier.max_depth}, {"max_pending", options.frontier.max_pending},
         {"max_urls", options.frontier.max_urls}, {"max_duration_ms", options.max_duration.count()},
         {"delay_ms", options.timing.interval.count()}, {"language", language_name(options.language_policy)}};
+    if (options.frontier.max_pending_per_host) {
+        configuration["max_pending_per_host"] = *options.frontier.max_pending_per_host;
+    }
     const Json record{
         {"schema_version", 1}, {"completed", true},
         {"application", {{"name", crawler_product}, {"version", version()}}},
@@ -108,7 +111,8 @@ void write_run_manifest(std::ostream& output, const CrawlCommand& command,
                      {"admission_out_of_scope", summary.admission.out_of_scope},
                      {"admission_depth_limit", summary.admission.depth_limit},
                      {"admission_queue_full", summary.admission.queue_full},
-                     {"admission_url_limit", summary.admission.url_limit}}},
+                     {"admission_url_limit", summary.admission.url_limit},
+                     {"admission_host_queue_full", summary.admission.host_queue_full}}},
         {"artifacts", {{"corpus", artifact(command.output_path)}, {"journal", artifact(command.log_path)}}}};
     // Strict serialization also rejects invalid UTF-8 before touching the output.
     const auto serialized = record.dump();

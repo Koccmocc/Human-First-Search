@@ -56,6 +56,9 @@ are not configurable through that schema. The complete manifest is not itself
 a config file. Absolute artifact paths describe the producing machine and may
 need remapping when sharing files.
 
+The optional positive `configuration.max_pending_per_host` is included when
+enabled and omitted when disabled. Both forms replay through `--config`.
+
 `processing.frontier` records the current scheduling policy
 `depth-host-round-robin-v1`. It affects visit order and duplicate representative
 choice, so changing policy can change the corpus even with identical seeds and
@@ -95,9 +98,11 @@ non-JSON constants such as `NaN` are rejected. Corpus records must match
 outcomes; their total must match `summary.targets`, and every outcome count must
 match its summary counter. Outcome counters must also add up to targets.
 
-New manifests also carry seven flat `summary.admission_*` counters. The verifier
-accepts older manifests without this entire group; when present it requires all
-seven nonnegative integers, `admission_added = targets + pending_urls`, and a
+New manifests also carry flat `summary.admission_*` counters. The verifier
+accepts older manifests without this entire group or with the original seven
+fields. The newer `admission_host_queue_full` is optional for historical files;
+when present it must accompany the original seven. All supplied counts must be
+nonnegative integers, with `admission_added = targets + pending_urls` and a
 rejected-admission total at least as large as `rejected_seeds`. See the
 [admission contract](frontier-admission.md) for meanings and check priority.
 
@@ -171,6 +176,6 @@ It does not authenticate the supplied manifest or enforce final corpus size.
 
 Eight additional verifier scenarios cover hashes even after updating the whole-file
 fingerprint, duplicate identities/texts, versions/policy/scope, IPv6, bad UTF-8
-surrogates, empty/absent corpus and moved paths. All 15 Python scenarios run inside
+surrogates, empty/absent corpus and moved paths. All 17 Python scenarios run inside
 the existing CTest verifier entry; CLI fixture tests now also enable page auditing.
 Offline checks accepted the saved eight-page v2 and twenty-page v3 pilot artifacts.

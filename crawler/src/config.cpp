@@ -18,6 +18,7 @@ constexpr std::array limits{
     ConfigField{"max_pages", "--max-pages"}, ConfigField{"max_targets", "--max-targets"},
     ConfigField{"max_depth", "--max-depth"}, ConfigField{"max_pending", "--max-pending"},
     ConfigField{"max_urls", "--max-urls"}, ConfigField{"max_duration_ms", "--max-duration-ms"},
+    ConfigField{"max_pending_per_host", "--max-pending-per-host"},
     ConfigField{"delay_ms", "--delay-ms"}};
 
 } // namespace

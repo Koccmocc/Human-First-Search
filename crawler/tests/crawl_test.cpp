@@ -195,6 +195,26 @@ TEST_F(Crawl, RoundRobinsTwoHostsAtEachDepthDespiteUnequalLinkCounts)
     EXPECT_EQ(summary.pending_urls, 11U); // 12 + 3 discovered children, four processed.
 }
 
+TEST_F(Crawl, PendingHostCapBoundsEachHostsBacklogWhileKeepingBothRoots)
+{
+    std::string other = base;
+    other.replace(other.find("127.0.0.1"), std::string{"127.0.0.1"}.size(), "localhost");
+    options.frontier.max_depth = 1;
+    options.frontier.max_pending_per_host = 2;
+    const std::vector<std::string> seeds{base + "/balance/a-root", other + "/balance/b-root"};
+    const auto summary = hfs::crawl(seeds, {"127.0.0.1", "localhost"}, collect, options);
+    ASSERT_EQ(pages.size(), 6U);
+    EXPECT_EQ(pages[0].url, seeds[0]);
+    EXPECT_EQ(pages[1].url, seeds[1]);
+    EXPECT_EQ(pages.back().url, other + "/balance/b/2");
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::queue_empty);
+    EXPECT_EQ(summary.admission.added, 6U);
+    EXPECT_EQ(summary.admission.host_queue_full, 11U); // 10 rejected A children, one B child.
+    EXPECT_EQ(summary.admission.queue_full, 0U);
+    EXPECT_EQ(summary.rejected_seeds, 0U);
+    EXPECT_EQ(summary.pending_urls, 0U);
+}
+
 TEST_F(Crawl, ResolvesLinksAtFinalUrlAndEmitsRedirectDestinationsOnce)
 {
     const auto summary = run({base + "/crawl/alias", base + "/crawl/nested/page",

@@ -124,7 +124,8 @@ auto run(int argc, char* argv[]) -> int
                   << " admission_out_of_scope=" << summary.admission.out_of_scope
                   << " admission_depth_limit=" << summary.admission.depth_limit
                   << " admission_queue_full=" << summary.admission.queue_full
-                  << " admission_url_limit=" << summary.admission.url_limit << '\n';
+                  << " admission_url_limit=" << summary.admission.url_limit
+                  << " admission_host_queue_full=" << summary.admission.host_queue_full << '\n';
         std::cerr.flush();
         if (!std::cerr) {
             throw std::runtime_error{"Could not flush crawl summary to stderr"};

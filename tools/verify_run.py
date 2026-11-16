@@ -194,7 +194,10 @@ def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=Fa
     admission_fields = ["admission_" + outcome for outcome in
                         ("added", "duplicate", "invalid_url", "out_of_scope", "depth_limit", "queue_full", "url_limit")]
     # Older schema-1 manifests omit this whole group; missing counters are unknown, not zero.
-    if any(key in summary for key in admission_fields):
+    host_field = "admission_host_queue_full"
+    if any(key in summary for key in admission_fields) or host_field in summary:
+        if host_field in summary:
+            admission_fields.append(host_field)
         for key in admission_fields:
             nonnegative_integer(summary.get(key), "summary." + key)
         require(summary["admission_added"] == summary["targets"] + summary["pending_urls"],
