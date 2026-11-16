@@ -36,6 +36,8 @@ struct CrawlOptions {
     // Optional synchronous notification after each completed queue target.
     CrawlObserver on_event;
     CrawlLanguagePolicy language_policy{CrawlLanguagePolicy::english_only};
+    // Export selection only: excluded HTML still supplies links and uses target budgets.
+    std::vector<std::string> export_exclusions;
 };
 
 struct CrawledPage {
@@ -69,6 +71,7 @@ struct CrawlSummary {
     std::size_t duplicate_texts{};
     std::size_t non_english_pages{};
     std::size_t unknown_language_pages{};
+    std::size_t excluded_pages{};
     std::size_t rejected_seeds{};
     std::size_t pending_urls{};
     AdmissionCounts admission; // Completed seed/link offers, rather than unique rejected URLs.

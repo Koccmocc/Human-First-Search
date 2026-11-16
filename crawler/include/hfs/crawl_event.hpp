@@ -14,7 +14,7 @@ namespace hfs {
 
 enum class CrawlOutcome {
     page_delivered, fetch_failed, response_skipped, empty_text, duplicate_url, duplicate_text,
-    non_english, unknown_language
+    non_english, unknown_language, export_excluded
 };
 
 // One completed queue target, not an individual HTTP or robots request.

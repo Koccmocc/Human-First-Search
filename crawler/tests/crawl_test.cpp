@@ -29,6 +29,52 @@ protected:
     }
 };
 
+TEST_F(Crawl, ExportExclusionsUseFinalUrlAndDiscoverLinksWithoutReservingTextHashes)
+{
+    options.export_exclusions = {base + "/selection/list"};
+    options.max_pages = 1;
+    std::vector<hfs::CrawlEvent> events;
+    options.on_event = [&](const auto& event) { events.push_back(event); };
+    auto summary = run({base + "/selection/alias"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].url, base + "/selection/kept");
+    EXPECT_EQ(pages[0].depth, 1U);
+    EXPECT_EQ(summary.excluded_pages, 1U);
+    EXPECT_EQ(summary.targets_processed, 2U);
+    EXPECT_EQ(summary.duplicate_texts, 0U);
+    ASSERT_EQ(events.size(), 2U);
+    EXPECT_EQ(events[0].outcome, hfs::CrawlOutcome::export_excluded);
+    EXPECT_EQ(events[0].final_url, base + "/selection/list");
+    EXPECT_EQ(events[0].http_status, 200);
+    EXPECT_FALSE(events[0].language);
+
+    pages.clear();
+    options.max_targets = 1;
+    summary = run({base + "/selection/alias"});
+    EXPECT_TRUE(pages.empty());
+    EXPECT_EQ(summary.stop, hfs::CrawlStop::target_limit);
+    EXPECT_EQ(summary.excluded_pages, 1U);
+    EXPECT_EQ(summary.pending_urls, 1U);
+
+    options.export_exclusions = {base + "/selection/alias"};
+    summary = run({base + "/selection/alias"});
+    ASSERT_EQ(pages.size(), 1U);
+    EXPECT_EQ(pages[0].url, base + "/selection/list");
+    EXPECT_EQ(summary.excluded_pages, 0U);
+}
+
+TEST_F(Crawl, ExportExclusionsRetainFetchPolicyAndResponseValidation)
+{
+    options.export_exclusions = {base + "/*"};
+    const auto summary = run({base + "/private/page", base + "/missing"});
+    EXPECT_TRUE(pages.empty());
+    EXPECT_EQ(summary.fetch_failures, 1U);
+    EXPECT_EQ(summary.skipped_responses, 1U);
+    EXPECT_EQ(summary.excluded_pages, 0U);
+    options.export_exclusions = {"/relative/*"};
+    EXPECT_THROW((run({base + "/selection/list"})), std::invalid_argument);
+}
+
 TEST_F(Crawl, EnglishAdmissionRejectsOtherAndUnknownTextButDiscoversItsLinks)
 {
     options.language_policy = hfs::CrawlLanguagePolicy::english_only;

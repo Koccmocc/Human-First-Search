@@ -116,6 +116,7 @@ auto run(int argc, char* argv[]) -> int
                   << " duplicate_texts=" << summary.duplicate_texts
                   << " non_english_pages=" << summary.non_english_pages
                   << " unknown_language_pages=" << summary.unknown_language_pages
+                  << " excluded_pages=" << summary.excluded_pages
                   << " rejected_seeds=" << summary.rejected_seeds
                   << " pending_urls=" << summary.pending_urls
                   << " admission_added=" << summary.admission.added

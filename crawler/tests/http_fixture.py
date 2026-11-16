@@ -64,6 +64,7 @@ class Handler(BaseHTTPRequestHandler):
             "/crawl/alias": (302, "/crawl/nested/page"),
             "/crawl/alias-two": (301, "/crawl/nested/page"),
             "/crawl/export-alias": (302, "/crawl/export"),
+            "/selection/alias": (302, "/selection/list"),
             "/dedup/a-alias": (302, "/dedup/a"),
             "/language/german-alias": (302, "/language/german"),
         }
@@ -71,6 +72,8 @@ class Handler(BaseHTTPRequestHandler):
         status, location = redirects.get(self.path, (default_status, None))
         body = b"x" * 128 if self.path == "/large" else b"<p>Hello</p>"
         crawl_pages = {
+            "/selection/list": b'<main>Shared listing text</main><a href="/selection/kept">Useful child</a>',
+            "/selection/kept": b'<main>Shared listing text</main>',
             "/crawl/slow-start": b'<main>Slow page</main><nav><a href="/must-not-follow">Next</a></nav>',
             "/crawl/start": b'<title>Start</title><p>Start body</p>'
                             b'<a href="a#first">A</a><a href="a#again">Duplicate</a>'

@@ -18,6 +18,25 @@ auto sample_command() -> hfs::CrawlCommand
 }
 }
 
+TEST(Manifest, RecordsReplayableExportRulesAndExcludedCounter)
+{
+    auto command = sample_command();
+    command.options.export_exclusions = {"HTTPS://EXAMPLE.org:443/jobs/*"};
+    hfs::CrawlSummary summary;
+    summary.excluded_pages = 2;
+    summary.targets_processed = 2;
+    summary.admission.added = 2;
+    std::ostringstream output;
+    hfs::write_run_manifest(output, command, summary, {});
+    const auto record = nlohmann::json::parse(output.str());
+    EXPECT_EQ(record["processing"]["export_filter"], "url-export-v1");
+    EXPECT_EQ(record["summary"]["excluded_pages"], 2);
+    const auto replay = hfs::parse_crawl_config(record["configuration"].dump());
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(replay));
+    EXPECT_EQ(std::get<hfs::CrawlCommand>(replay).options.export_exclusions,
+              (std::vector<std::string>{"https://example.org/jobs/*"}));
+}
+
 TEST(Manifest, RecordsEffectiveDefaultsAndReplayableConfigurationWithSuppliedTiming)
 {
     auto command = sample_command();

@@ -1,5 +1,6 @@
 #include "hfs/cli.hpp"
 #include "hfs/url.hpp"
+#include "hfs/export_filter.hpp"
 
 #include <algorithm>
 #include <array>
@@ -85,7 +86,8 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
                                          [option](const auto& item) { return item.name == option; });
         if (option != "--seed" && option != "--allow-host" && option != "--delay-ms" &&
             option != "--output" && option != "--log" && option != "--max-duration-ms" &&
-            option != "--language" && option != "--manifest" && option != "--max-pending-per-host" && limit == limits.end()) {
+            option != "--language" && option != "--manifest" && option != "--exclude-export" &&
+            option != "--max-pending-per-host" && limit == limits.end()) {
             return hfs::CliError{"Unknown argument: " + std::string{option}};
         }
         if (++index == arguments.size() || arguments[index].starts_with("--")) {
@@ -106,6 +108,12 @@ auto parse_crawl(std::span<const std::string_view> arguments) -> hfs::CliResult
             if (std::find(command.allowed_hosts.begin(), command.allowed_hosts.end(), *host) == command.allowed_hosts.end()) {
                 command.allowed_hosts.push_back(std::move(*host));
             }
+        } else if (option == "--exclude-export") {
+            auto pattern = hfs::normalize_export_pattern(value);
+            if (!pattern) {
+                return hfs::CliError{"--exclude-export requires an absolute URL or directory ending in /*, without query/fragment"};
+            }
+            command.options.export_exclusions.push_back(std::move(*pattern));
         } else if (option == "--language") {
             if (!supplied.insert(option).second || (value != "en" && value != "any")) {
                 return hfs::CliError{"--language requires en or any and cannot be repeated"};
@@ -216,6 +224,7 @@ auto help_text() noexcept -> std::string_view
            "  --log PATH          Write a new crawl-event JSONL file.\n"
            "  --manifest PATH     Write run metadata and artifact SHA-256 after completion.\n"
            "  --language en|any   Admit reliable English by default; any is diagnostic mode.\n"
+           "  --exclude-export URL  Exclude an exact URL or directory ending in /*; repeatable.\n"
            "  --config PATH       Read schema-1 JSON; only output/log/manifest options may accompany it.\n"
            "\n"
            "Numbers are unsigned decimal; only depth and delay may be zero.\n"

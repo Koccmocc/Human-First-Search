@@ -29,6 +29,26 @@ class CliCrawl(unittest.TestCase):
         self.assertTrue(result.stderr.startswith("crawl: "), result.stderr)
         return dict(item.split("=", 1) for item in result.stderr.removeprefix("crawl: ").split())
 
+    def test_export_exclusion_config_preserves_discovery_and_saved_accounting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config, corpus, log, manifest = [root / name for name in ("config.json", "corpus.jsonl", "log.jsonl", "run.json")]
+            config.write_text(json.dumps({"schema_version": 1, "seeds": [BASE + "/selection/alias"],
+                "allowed_hosts": ["127.0.0.1"], "language": "any", "delay_ms": 0, "max_pages": 1,
+                "export_exclusions": [BASE + "/selection/list"]}), encoding="utf-8")
+            summary = self.summary(self.run_config(config, "--output", corpus, "--log", log, "--manifest", manifest))
+            self.assertEqual(summary["excluded_pages"], "1")
+            self.assertEqual(summary["pages"], "1")
+            pages = [json.loads(line) for line in corpus.read_bytes().splitlines()]
+            self.assertEqual([page["url"] for page in pages], [BASE + "/selection/kept"])
+            events = [json.loads(line) for line in log.read_bytes().splitlines()]
+            self.assertEqual([event["outcome"] for event in events], ["export_excluded", "page_delivered"])
+            record = json.loads(manifest.read_bytes())
+            self.assertEqual(record["processing"]["export_filter"], "url-export-v1")
+            self.assertEqual(record["configuration"]["export_exclusions"], [BASE + "/selection/list"])
+            self.assertEqual(record["summary"]["excluded_pages"], 1)
+            self.assertEqual(self.verify_saved_run(manifest)["page_audit"]["checked_pages"], 1)
+
     def run_config(self, path, *arguments):
         return subprocess.run(
             [CRAWLER, "crawl", "--config", str(path), *arguments],

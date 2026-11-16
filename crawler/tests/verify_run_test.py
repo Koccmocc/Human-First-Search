@@ -313,6 +313,46 @@ class VerifyRun(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertNotIn("Traceback", result.stderr)
 
+    def test_page_audit_enforces_recorded_export_rules_and_requires_their_version(self):
+        self.enable_page_audit()
+        self.record["configuration"]["export_exclusions"] = ["https://example.org/first", "https://example.org/hidden/*"]
+        self.record["processing"]["export_filter"] = "url-export-v1"
+        for url in ("https://example.org/first?x=1", "https://example.org/hidden/child"):
+            self.store_pages([self.audit_page(url)])
+            with self.assertRaisesRegex(ValueError, "export exclusion"):
+                verify_run(self.manifest, check_pages=True)
+        page = self.audit_page("https://example.org/visible?next=/hidden/child")
+        page["requested_urls"] = ["https://example.org/first", page["url"]]
+        self.store_pages([page])
+        self.assertEqual(verify_run(self.manifest, check_pages=True)["page_audit"]["checked_pages"], 1)
+        self.record["processing"].pop("export_filter")
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "export_filter"):
+            verify_run(self.manifest, check_pages=True)
+        self.record["processing"]["export_filter"] = "url-export-v1"
+        for patterns in (None, [1], ["/relative/*"], ["https://example.org/a*"], ["https://example.org/?q=x"]):
+            self.record["configuration"]["export_exclusions"] = patterns
+            self.save_manifest()
+            with self.assertRaises(ValueError):
+                verify_run(self.manifest, check_pages=True)
+
+    def test_export_excluded_outcomes_require_consistent_optional_summary_counts(self):
+        self.log.write_bytes(self.log.read_bytes() +
+            b'{"schema_version":1,"event":"crawl_target","outcome":"export_excluded"}\n')
+        self.record["artifacts"]["journal"] = self.descriptor(self.log)
+        self.record["summary"].update(targets=3, excluded_pages=1)
+        self.save_manifest()
+        self.assertEqual(verify_run(self.manifest)["artifacts"]["journal"]["records"], 3)
+        for value in (0, -1, True):
+            self.record["summary"]["excluded_pages"] = value
+            self.save_manifest()
+            with self.assertRaises(ValueError):
+                verify_run(self.manifest)
+        del self.record["summary"]["excluded_pages"]
+        self.save_manifest()
+        with self.assertRaises(ValueError):
+            verify_run(self.manifest)
+
     def test_minimums_enable_page_audit_and_count_hosts_across_schemes_and_ports(self):
         self.enable_page_audit()
         self.store_pages([self.audit_page(), self.audit_page("http://example.org:8080/second", "Second text"),

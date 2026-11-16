@@ -94,6 +94,11 @@ journal from the manifest's absolute paths, hashes the exact bytes with
 reads JSONL one line at a time, so memory depends on the largest record, not the total corpus.
 The manifest itself is read into memory.
 
+Enabled [export rules](export-selection.md) are saved in configuration with an
+`export_filter` processing version. Summary `excluded_pages` counts their
+`export_excluded` events and contributes to the target total. Missing historical
+counters mean zero exclusions. Page audit rejects URLs matching the saved rules.
+
 Every record must be a UTF-8 JSON object with integer `schema_version: 1` and
 LF termination. BOM, CRLF, blank lines, malformed JSON, duplicate keys and
 non-JSON constants such as `NaN` are rejected. Corpus records must match

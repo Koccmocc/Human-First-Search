@@ -42,6 +42,10 @@ scheduling budget. Delay and English policy are unchanged. The
 | `max_duration_ms` | Optional positive integer, same scheduling budget as `--max-duration-ms` |
 | `delay_ms` | Optional nonnegative integer, same as `--delay-ms` |
 | `language` | Optional string `en` or `any`, default `en` |
+| `export_exclusions` | Optional array of exact absolute URLs or directory `/*` patterns; export selection only, default empty |
+
+Export matching and the trial `pilot-500-filtered.json` profile are described in
+[export selection](export-selection.md). These rules keep link discovery enabled.
 
 Omitted options use the same defaults as direct CLI mode. The original pilot
 sets the core limits explicitly and leaves the optional host cap disabled.

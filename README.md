@@ -208,6 +208,13 @@ artifact identities, content samples and the indexer handoff.
 
 ## Export JSONL records
 
+To keep selected URL categories out of the corpus while retaining their links,
+use repeatable `--exclude-export "https://example.org/jobs/*"` or a config's
+`export_exclusions` array. Rules apply to the final URL after a normal checked
+fetch; exact URLs and directory `/*` are supported. See
+[export selection](docs/export-selection.md) for matching, accounting and the
+trial `config/pilot-500-filtered.json` profile.
+
 Choose a new output file and run from the repository root:
 
 ```powershell
@@ -1092,7 +1099,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 169-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 175-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

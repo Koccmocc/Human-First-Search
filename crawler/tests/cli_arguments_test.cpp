@@ -13,6 +13,20 @@ auto parse(std::initializer_list<std::string_view> arguments) -> hfs::CliResult
 }
 }
 
+TEST(CliArguments, ParsesRepeatableCanonicalExportExclusions)
+{
+    auto result = parse({"crawl", "--seed", "https://example.org/", "--allow-host", "example.org",
+        "--exclude-export", "HTTPS://EXAMPLE.org:443/jobs/*", "--exclude-export", "https://example.org/index.html"});
+    ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+    EXPECT_EQ(std::get<hfs::CrawlCommand>(result).options.export_exclusions,
+              (std::vector<std::string>{"https://example.org/jobs/*", "https://example.org/index.html"}));
+    for (const auto* pattern : {"/jobs/*", "https://example.org/jobs?x=1", "https://example.org/job*"}) {
+        EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--seed", "https://example.org/",
+            "--allow-host", "example.org", "--exclude-export", pattern})));
+    }
+    EXPECT_TRUE(std::holds_alternative<hfs::CliError>(parse({"crawl", "--exclude-export"})));
+}
+
 TEST(CliArguments, PreservesHelpVersionAndRejectsMixedActions)
 {
     EXPECT_EQ(std::get<hfs::CliAction>(parse({})), hfs::CliAction::help);

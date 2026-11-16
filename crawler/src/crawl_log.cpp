@@ -20,6 +20,7 @@ auto outcome_name(hfs::CrawlOutcome value) -> std::string_view
     case duplicate_text: return "duplicate_text";
     case non_english: return "non_english";
     case unknown_language: return "unknown_language";
+    case export_excluded: return "export_excluded";
     }
     throw std::invalid_argument{"Unknown crawl outcome"};
 }

@@ -2,6 +2,7 @@
 #include "hfs/html_document.hpp"
 #include "hfs/html_input.hpp"
 #include "hfs/page_identity.hpp"
+#include "hfs/export_filter.hpp"
 
 #include <stdexcept>
 #include <unordered_set>
@@ -21,6 +22,7 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         throw std::invalid_argument{"Unknown crawl language policy"};
     }
 
+    const ExportFilter export_filter{options.export_exclusions};
     const auto started = options.steady_now();
     UrlFrontier frontier{allowed_hosts, options.frontier};
     PageFetcher fetcher{std::move(allowed_hosts), options.robots, options.timing};
@@ -108,8 +110,14 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         }
         const HtmlDocument document{html};
         const CrawlTarget parent{fetched->final_url, target->depth};
-        auto extracted = document.main_text();
-        if (extracted.text.empty()) {
+        // Evaluate the final URL before language/text deduplication. Excluded content
+        // must not consume a text hash that a later, exportable page may share.
+        const bool excluded = export_filter.excludes(fetched->final_url);
+        auto extracted = excluded ? HtmlText{} : document.main_text();
+        if (excluded) {
+            ++summary.excluded_pages;
+            event.outcome = CrawlOutcome::export_excluded;
+        } else if (extracted.text.empty()) {
             // Extraction has already normalized whitespace and removed ignored subtrees.
             ++summary.empty_texts;
             event.outcome = CrawlOutcome::empty_text;
@@ -143,7 +151,7 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
                 }
             }
         }
-        // Empty, duplicate or language-rejected text can still lead to useful pages.
+        // Excluded, empty, duplicate or language-rejected text can still supply links.
         // Relative references belong to the final URL, not the redirect source.
         for (const auto& link : document.links()) {
             (void)frontier.add_link(parent, link);

@@ -10,7 +10,7 @@ records and log records have separate files and contracts.
 | `event` | `crawl_target` |
 | `url` | Canonical URL popped from the queue, before redirects |
 | `depth` | Discovery depth; seeds have depth zero |
-| `outcome` | `page_delivered`, `fetch_failed`, `response_skipped`, `empty_text`, `duplicate_url`, `duplicate_text`, `non_english` or `unknown_language` |
+| `outcome` | `page_delivered`, `fetch_failed`, `response_skipped`, `empty_text`, `duplicate_url`, `duplicate_text`, `non_english`, `unknown_language` or `export_excluded` |
 | `final_url` | Known final URL, or `null` on fetch failure |
 | `http_status` | Final response status, or `null` when no response is available or no fresh fetch occurred |
 | `html_input` | Input-gate result for status 200; otherwise `null` |
@@ -27,11 +27,14 @@ Permission denials still combine scope and robots checks as `request_denied`.
 In a normally completed session, the number of log lines equals the summary's
 `targets` count. Outcome counts match `pages`, `fetch_failures`,
 `skipped_responses`, `empty_texts`, `duplicate_pages`, `duplicate_texts`,
-`non_english_pages` and `unknown_language_pages`.
+`non_english_pages`, `unknown_language_pages` and `excluded_pages`.
 Events retain queue processing order. A successful page event follows consumer
 delivery and link discovery. Pending targets, rejected seeds/links and individual
 HTTP/robots requests are outside this stream. It contains no bodies, event
 timestamps, partial redirect chains on failures or duplicate-representative map.
+
+URL [export exclusions](export-selection.md) are checked before text/language
+analysis: `export_excluded` leaves `language` null and still supplies links.
 
 Language analysis follows nonempty main-text extraction and precedes hashing.
 `non_english` means a reliable detected code differs from `en`.

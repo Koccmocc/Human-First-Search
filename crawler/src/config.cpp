@@ -50,6 +50,7 @@ auto parse_crawl_config(std::string_view input) -> CrawlConfigResult
         for (const auto& entry : config.items()) {
             const auto& key = entry.key();
             if (key != "schema_version" && key != "seeds" && key != "allowed_hosts" && key != "language" &&
+                key != "export_exclusions" &&
                 std::none_of(limits.begin(), limits.end(), [&](const auto& field) { return field.key == key; })) {
                 return CliError{"Unknown crawl config key: " + key};
             }
@@ -65,6 +66,19 @@ auto parse_crawl_config(std::string_view input) -> CrawlConfigResult
                 }
                 words.emplace_back(field.option);
                 words.push_back(value.get<std::string>());
+            }
+        }
+        if (config.contains("export_exclusions")) {
+            const auto& patterns = config.at("export_exclusions");
+            if (!patterns.is_array()) {
+                return CliError{"export_exclusions must be an array of URL pattern strings"};
+            }
+            for (const auto& pattern : patterns) {
+                if (!pattern.is_string()) {
+                    return CliError{"export_exclusions must contain only strings"};
+                }
+                words.emplace_back("--exclude-export");
+                words.push_back(pattern.get<std::string>());
             }
         }
         for (const auto& field : limits) {

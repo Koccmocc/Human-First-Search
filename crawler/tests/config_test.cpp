@@ -9,6 +9,28 @@ constexpr std::string_view minimal{
     R"({"schema_version":1,"seeds":["https://example.org/"],"allowed_hosts":["example.org"]})"};
 }
 
+TEST(Config, ParsesOptionalExportRulesAndRejectsWrongTypesOrPatterns)
+{
+    for (const auto* value : {R"(["HTTPS://EXAMPLE.org:443/jobs/*"])", "[]", "null", "true",
+                            R"([1])", R"(["/jobs/*"])", R"(["https://example.org/?q=x"])"}) {
+        auto input = std::string{minimal};
+        input.pop_back();
+        input += ",\"export_exclusions\":" + std::string{value} + "}";
+        const auto result = hfs::parse_crawl_config(input);
+        if (std::string_view{value} == "[]" || std::string_view{value}.starts_with("[\"HTTPS")) {
+            ASSERT_TRUE(std::holds_alternative<hfs::CrawlCommand>(result));
+            const auto& rules = std::get<hfs::CrawlCommand>(result).options.export_exclusions;
+            if (std::string_view{value} != "[]") {
+                EXPECT_EQ(rules, (std::vector<std::string>{"https://example.org/jobs/*"}));
+            } else {
+                EXPECT_TRUE(rules.empty());
+            }
+        } else {
+            EXPECT_TRUE(std::holds_alternative<hfs::CliError>(result)) << input;
+        }
+    }
+}
+
 TEST(Config, ParsesOwningCanonicalOptionsInSeedOrder)
 {
     std::string input{R"({"schema_version":1,

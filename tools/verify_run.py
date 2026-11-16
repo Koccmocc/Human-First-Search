@@ -19,6 +19,7 @@ OUTCOME_COUNTERS = {
     "duplicate_text": "duplicate_texts",
     "non_english": "non_english_pages",
     "unknown_language": "unknown_language_pages",
+    "export_excluded": "excluded_pages",
 }
 
 
@@ -82,6 +83,20 @@ class PageAudit:
         self.by_host = Counter()
         self.by_source = Counter()
         self.characters = 0
+        self.export_rules = config.get("export_exclusions", [])
+        require(isinstance(self.export_rules, list), "export_exclusions must be an array")
+        if self.export_rules:
+            require(processing.get("export_filter") == "url-export-v1", "Unknown or missing export_filter version")
+        for pattern in self.export_rules:
+            require(isinstance(pattern, str) and pattern, "Expected a nonempty export exclusion")
+            base = pattern[:-1] if pattern.endswith("/*") else pattern
+            require(not any(ord(char) <= 0x20 or ord(char) == 0x7f for char in base) and
+                    not any(char in base for char in "*?#\\"), "Invalid export exclusion pattern")
+            parsed = urlsplit(base)
+            require(parsed.scheme in ("http", "https") and parsed.hostname is not None and
+                    parsed.username is None and parsed.password is None and parsed.path.startswith("/"),
+                    "Expected an absolute export exclusion URL")
+            _ = parsed.port
 
     def url_host(self, url):
         require(isinstance(url, str) and url, "Expected a nonempty URL string")
@@ -101,6 +116,10 @@ class PageAudit:
     def check(self, page):
         url = page.get("url")
         host = self.url_host(url)
+        path_url = url.split("?", 1)[0]
+        for pattern in self.export_rules:
+            excluded = path_url.startswith(pattern[:-1]) if pattern.endswith("/*") else path_url == pattern
+            require(not excluded, "Corpus URL matches an export exclusion")
         text = page.get("text")
         require(isinstance(text, str) and text, "Expected nonempty extracted text")
         page_id = "sha256:" + hashlib.sha256(url.encode("utf-8")).hexdigest()
@@ -175,7 +194,7 @@ def verify_artifact(path, descriptor, kind, summary, page_audit=None):
     require(records == summary[counter], f"{kind}: record count differs from summary.{counter}")
     if kind == "journal":
         for outcome, counter in OUTCOME_COUNTERS.items():
-            require(outcomes[outcome] == summary[counter],
+            require(outcomes[outcome] == summary.get(counter, 0),
                     f"journal: {outcome} count differs from summary.{counter}")
     return {"records": records, "bytes": byte_count, "sha256": actual_hash}
 
@@ -191,10 +210,12 @@ def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=Fa
     summary = manifest.get("summary")
     require(isinstance(summary, dict), "Manifest has no summary object")
     for key in (*OUTCOME_COUNTERS.values(), "targets", "rejected_seeds", "pending_urls"):
+        if key == "excluded_pages" and key not in summary:
+            continue  # Older schema-1 runs predate export selection and have no excluded events.
         nonnegative_integer(summary.get(key), f"summary.{key}")
     require(summary.get("stop") in ("queue_empty", "page_limit", "target_limit", "duration_limit"),
             "Unknown summary stop reason")
-    require(sum(summary[key] for key in OUTCOME_COUNTERS.values()) == summary["targets"],
+    require(sum(summary.get(key, 0) for key in OUTCOME_COUNTERS.values()) == summary["targets"],
             "Summary outcome counters do not add up to targets")
     admission_fields = ["admission_" + outcome for outcome in
                         ("added", "duplicate", "invalid_url", "out_of_scope", "depth_limit", "queue_full", "url_limit")]

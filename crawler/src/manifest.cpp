@@ -1,6 +1,7 @@
 #include "hfs/manifest.hpp"
 #include "hfs/crawler_identity.hpp"
 #include "hfs/file_fingerprint.hpp"
+#include "hfs/export_filter.hpp"
 
 #include <cstdio> // CLD2's public header declares APIs using FILE.
 #include <public/compact_lang_det.h>
@@ -77,7 +78,17 @@ void write_run_manifest(std::ostream& output, const CrawlCommand& command,
     if (options.frontier.max_pending_per_host) {
         configuration["max_pending_per_host"] = *options.frontier.max_pending_per_host;
     }
-    const Json record{
+    if (!options.export_exclusions.empty()) {
+        configuration["export_exclusions"] = Json::array();
+        for (const auto& pattern : options.export_exclusions) {
+            const auto normalized = normalize_export_pattern(pattern);
+            if (!normalized) {
+                throw std::invalid_argument{"Invalid export exclusion in manifest"};
+            }
+            configuration["export_exclusions"].push_back(*normalized);
+        }
+    }
+    Json record{
         {"schema_version", 1}, {"completed", true},
         {"application", {{"name", crawler_product}, {"version", version()}}},
         {"build", {{"compiler", "GNU"}, {"compiler_version", HFS_COMPILER_VERSION},
@@ -104,6 +115,7 @@ void write_run_manifest(std::ostream& output, const CrawlCommand& command,
                      {"duplicate_pages", summary.duplicate_pages}, {"duplicate_texts", summary.duplicate_texts},
                      {"non_english_pages", summary.non_english_pages},
                      {"unknown_language_pages", summary.unknown_language_pages},
+                     {"excluded_pages", summary.excluded_pages},
                      {"rejected_seeds", summary.rejected_seeds}, {"pending_urls", summary.pending_urls},
                      {"admission_added", summary.admission.added},
                      {"admission_duplicate", summary.admission.duplicate},
@@ -114,6 +126,9 @@ void write_run_manifest(std::ostream& output, const CrawlCommand& command,
                      {"admission_url_limit", summary.admission.url_limit},
                      {"admission_host_queue_full", summary.admission.host_queue_full}}},
         {"artifacts", {{"corpus", artifact(command.output_path)}, {"journal", artifact(command.log_path)}}}};
+    if (!options.export_exclusions.empty()) {
+        record["processing"]["export_filter"] = export_filter_version;
+    }
     // Strict serialization also rejects invalid UTF-8 before touching the output.
     const auto serialized = record.dump();
     if (!(output << serialized << '\n')) {

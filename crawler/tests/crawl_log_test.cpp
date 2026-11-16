@@ -52,7 +52,8 @@ TEST(CrawlLog, PreservesOutcomeAndInputNames)
         {hfs::CrawlOutcome::duplicate_url, "duplicate_url"},
         {hfs::CrawlOutcome::duplicate_text, "duplicate_text"},
         {hfs::CrawlOutcome::non_english, "non_english"},
-        {hfs::CrawlOutcome::unknown_language, "unknown_language"}};
+        {hfs::CrawlOutcome::unknown_language, "unknown_language"},
+        {hfs::CrawlOutcome::export_excluded, "export_excluded"}};
     for (const auto& [value, name] : outcomes) {
         hfs::CrawlEvent event;
         event.outcome = value;
