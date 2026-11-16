@@ -162,6 +162,17 @@ Its JSON report adds counts by host and text source. It needs a saved corpus
 and the manifest's configuration/processing metadata; it does not rerun the
 language model or assess extraction quality.
 
+Require a minimum corpus size/coverage when accepting a snapshot:
+
+```powershell
+python tools/verify_run.py data/pilot-500-20261116T181730Z-run.json --min-pages 500 --min-hosts 5
+```
+
+Both options take positive integers and automatically enable page audit. Counts
+come from verified corpus records, including only hosts that delivered pages.
+A normal completed run below either minimum exits 1. Without these options,
+smaller valid snapshots remain accepted. See the [acceptance rules](docs/run-manifest.md#minimum-corpus-requirements).
+
 Create a portable indexer archive from a completed run with saved corpus and journal:
 
 ```powershell

@@ -175,10 +175,42 @@ URL parser checks basic structure/scope independently; it does not reproduce
 Lexbor canonicalization. The audit does not rerun CLD2, validate extraction quality,
 validate timestamps/title/content-type fields, or match individual delivered
 journal events to corpus rows. Existing journal counts are still verified.
-It does not authenticate the supplied manifest or enforce final corpus size.
+It does not authenticate the supplied manifest. Without the optional requirements
+below, it accepts any verified corpus size, including zero.
 
 Eight additional verifier scenarios cover hashes even after updating the whole-file
 fingerprint, duplicate identities/texts, versions/policy/scope, IPv6, bad UTF-8
-surrogates, empty/absent corpus and moved paths. All 17 Python scenarios run inside
-the existing CTest verifier entry; CLI fixture tests now also enable page auditing.
+surrogates, empty/absent corpus and moved paths. The initial 17 Python scenarios
+ran inside the existing CTest verifier entry; CLI fixture tests also enable page auditing.
 Offline checks accepted the saved eight-page v2 and twenty-page v3 pilot artifacts.
+
+## Minimum corpus requirements
+
+Use explicit acceptance criteria when a handoff needs a particular size:
+
+```powershell
+python tools/verify_run.py data/pilot-500-20261116T181730Z-run.json --min-pages 500 --min-hosts 5
+```
+
+Either option automatically enables the complete page audit, requiring a saved
+corpus and its configuration/processing metadata. Minimums are inclusive and
+must be positive integers. Page counts come from verified, unique corpus records;
+host counts come from their final URLs, not the configured allowlist or request
+chain. HTTP/HTTPS and different ports on the same hostname count as one host.
+Subdomains count separately: this is hostname coverage, not a count of independent
+registered domains or a guarantee of balanced representation.
+
+Integrity/page checks finish before checking these minimums. Failure exits 1 with
+actual/required counts on stderr and no success JSON. Invalid CLI minimums exit 2.
+Success adds only the supplied values under `requirements` in the JSON report,
+alongside `page_audit`. Inputs and the producer manifest remain unchanged.
+Omitting both flags preserves existing behavior and report shape.
+
+The valid earlier 438-page run fails a 500-page requirement; the subsequent
+500-page/five-host run passes. Requiring six delivered hosts fails that same
+500-page run even though its allowlist contains six hosts. Volume/coverage checks
+do not establish content quality or acceptance by the actual indexer.
+
+Three additional scenarios cover inclusive boundaries, unused allowed hosts,
+scheme/port grouping, empty/absent/corrupt corpora and invalid CLI/API minimums.
+The verifier suite now contains 20 Python scenarios within its single CTest entry.

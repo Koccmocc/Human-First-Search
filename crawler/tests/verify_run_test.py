@@ -313,6 +313,53 @@ class VerifyRun(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertNotIn("Traceback", result.stderr)
 
+    def test_minimums_enable_page_audit_and_count_hosts_across_schemes_and_ports(self):
+        self.enable_page_audit()
+        self.store_pages([self.audit_page(), self.audit_page("http://example.org:8080/second", "Second text"),
+                          self.audit_page("https://other.example/third", "Third text")])
+        result = self.run_tool(self.manifest, "--min-pages", "3", "--min-hosts", "2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["requirements"], {"min_pages": 3, "min_hosts": 2})
+        self.assertEqual(report["page_audit"]["checked_pages"], 3)
+        self.assertEqual(report["page_audit"]["pages_by_host"], {"example.org": 2, "other.example": 1})
+        self.assertNotIn("requirements", verify_run(self.manifest, check_pages=True))
+        for flag, minimum, diagnostic in (("--min-pages", "4", "3 pages"), ("--min-hosts", "3", "2 hosts")):
+            result = self.run_tool(self.manifest, flag, minimum)
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertIn(diagnostic, result.stderr)
+            self.assertIn("requires at least " + minimum, result.stderr)
+
+    def test_minimums_require_saved_auditable_pages_and_reject_empty_corpora(self):
+        self.enable_page_audit()
+        page = self.audit_page()
+        page["page_id"] = "sha256:" + "0" * 64
+        self.store_pages([page])
+        with self.assertRaisesRegex(ValueError, "page_id"):
+            verify_run(self.manifest, min_pages=1)
+        self.store_pages([])
+        for minimum in ({"min_pages": 1}, {"min_hosts": 1}):
+            with self.assertRaisesRegex(ValueError, "requires at least 1"):
+                verify_run(self.manifest, **minimum)
+        self.record["artifacts"]["corpus"] = None
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "requires a saved corpus"):
+            verify_run(self.manifest, min_hosts=1)
+
+    def test_minimum_parameters_reject_invalid_values_without_tracebacks(self):
+        for flag in ("--min-pages", "--min-hosts"):
+            for value in ("0", "-1", "1.5", "many"):
+                result = self.run_tool(self.manifest, flag, value)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("positive integer", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+        for key in ("min_pages", "min_hosts"):
+            for value in (True, 0, -1, 1.5, "1"):
+                with self.assertRaisesRegex(ValueError, "positive integer"):
+                    verify_run(self.manifest, **{key: value})
+
     def test_page_audit_honors_copied_corpus_override_and_rejects_unpaired_surrogates(self):
         self.enable_page_audit()
         copied = self.corpus.with_name("copied.jsonl")

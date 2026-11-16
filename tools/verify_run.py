@@ -180,7 +180,12 @@ def verify_artifact(path, descriptor, kind, summary, page_audit=None):
     return {"records": records, "bytes": byte_count, "sha256": actual_hash}
 
 
-def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=False):
+def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=False,
+               min_pages=None, min_hosts=None):
+    requirements = {key: value for key, value in (("min_pages", min_pages), ("min_hosts", min_hosts))
+                    if value is not None}
+    for key, value in requirements.items():
+        require(type(value) is int and value > 0, f"{key}: expected a positive integer")
     manifest = read_object(Path(manifest_path).read_bytes(), str(manifest_path))
     require(manifest.get("completed") is True, "Manifest does not mark a completed run")
     summary = manifest.get("summary")
@@ -207,8 +212,8 @@ def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=Fa
     artifacts = manifest.get("artifacts")
     require(isinstance(artifacts, dict), "Manifest has no artifacts object")
     page_audit = None
-    if check_pages:
-        require(artifacts.get("corpus") is not None, "--check-pages requires a saved corpus")
+    if check_pages or requirements:
+        require(artifacts.get("corpus") is not None, "Page audit requires a saved corpus")
         page_audit = PageAudit(manifest)
     verified = {}
     for kind, override in (("corpus", corpus_path), ("journal", log_path)):
@@ -228,7 +233,25 @@ def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=Fa
     report = {"verified": True, "artifacts": verified}
     if page_audit is not None:
         report["page_audit"] = page_audit.report()
+    if requirements:
+        # Count verified delivered pages/hosts, not the requested limit or allowlist size.
+        pages, hosts = len(page_audit.ids), len(page_audit.by_host)
+        require(min_pages is None or pages >= min_pages,
+                f"Corpus has {pages} pages; requires at least {min_pages}")
+        require(min_hosts is None or hosts >= min_hosts,
+                f"Corpus has {hosts} hosts; requires at least {min_hosts}")
+        report["requirements"] = requirements
     return report
+
+
+def positive_integer(raw):
+    try:
+        value = int(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Expected a positive integer") from None
+    if value <= 0:
+        raise argparse.ArgumentTypeError("Expected a positive integer")
+    return value
 
 
 def main():
@@ -237,9 +260,12 @@ def main():
     parser.add_argument("--corpus", type=Path, help="Location of a copied corpus; recorded hash still applies")
     parser.add_argument("--log", type=Path, help="Location of a copied journal; recorded hash still applies")
     parser.add_argument("--check-pages", action="store_true", help="Also audit page hashes, uniqueness, scope and metadata")
+    parser.add_argument("--min-pages", type=positive_integer, help="Require at least this many audited pages; enables page audit")
+    parser.add_argument("--min-hosts", type=positive_integer, help="Require at least this many delivered hosts; enables page audit")
     arguments = parser.parse_args()
     try:
-        report = verify_run(arguments.manifest, arguments.corpus, arguments.log, check_pages=arguments.check_pages)
+        report = verify_run(arguments.manifest, arguments.corpus, arguments.log, check_pages=arguments.check_pages,
+                            min_pages=arguments.min_pages, min_hosts=arguments.min_hosts)
     except (OSError, ValueError, RecursionError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

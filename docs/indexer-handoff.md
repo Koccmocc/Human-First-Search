@@ -47,6 +47,20 @@ building C++ or fetching the sites. Both path overrides are intentional: the
 original manifest retains the producing machine's absolute paths, while the
 fingerprints apply to the exact copied bytes. Exit 0 means verification passed.
 
+For a 500-page/five-host handoff, a current verifier can also enforce the minimums:
+
+```powershell
+python tools/verify_run.py manifest.json --corpus corpus.jsonl --log crawl-log.jsonl --min-pages 500 --min-hosts 5
+```
+
+These options enable page audit automatically and count actual delivered records
+and final hostnames. A valid smaller snapshot is rejected for this handoff.
+See the [minimum requirement rules](run-manifest.md#minimum-corpus-requirements).
+Older archives may contain a verifier without these flags; use the current source
+checkout's `tools/verify_run.py` against their unpacked manifest/corpus/journal,
+or repack with current tools. The ordinary `--check-pages` command above remains
+valid for those older archives.
+
 The initial 2026-11-16 v4 snapshot contains 100 accepted English pages: Python 24,
 RFC Editor 22, SQLite 23, PostgreSQL 9 and GNU 22. Its 117 target attempts also include 16 fetch
 failures and one unknown-language rejection, recorded in the journal. The
