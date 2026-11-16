@@ -8,6 +8,10 @@ text deduplication. Reliable English detection is required by default. Initial
 real-site pilots cover five hosts; broader corpus quality review remains necessary.
 Development is independent of the team's Python/API/UI.
 
+For indexer development, start with [the handoff guide](docs/indexer-handoff.md):
+input fields, stable IDs, updates/chunks and verification of the local development
+snapshot. The export contract is schema 1; current extraction is `semantic-text-v4`.
+
 ## Build and run
 
 Run these commands from the repository root (`Search-Engine`):
@@ -360,7 +364,9 @@ Role lists and uppercase values are outside this limited heuristic; this is not
 a full ARIA role resolver. Empty and moved-from documents return empty text with
 source `body`.
 
-The heading fallback requires exactly one HTML `h1` outside skipped subtrees,
+The heading fallback requires one HTML `h1` outside skipped subtrees, or one HTML
+`h2` when no h1 exists. A present unusable/ambiguous h1 does not fall through to h2.
+The chosen heading is
 directly inside a `body`, `div` or `section`. It selects the nonempty heading and
 its following siblings in that parent, requiring at least 200 normalized UTF-8
 bytes after the heading. Earlier siblings and content outside the parent are
@@ -369,7 +375,7 @@ fallback. This is a byte gate for extraction, independent of language detection.
 See the [heading fallback review](docs/heading-fallback.md) for examples and limits.
 
 The crawl loop hashes and deduplicates the selected text. JSONL labels the policy
-`semantic-text-v3` and records `text_source` so fallback selection is visible. Changing
+`semantic-text-v4` and records `text_source` so fallback selection is visible. Changing
 selection rules can change `text_hash` while URL-based `page_id` stays stable.
 Link discovery still uses `links()` across the whole document, including outside
 the selected container and on pages skipped as text duplicates.
@@ -1055,7 +1061,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 165-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 168-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

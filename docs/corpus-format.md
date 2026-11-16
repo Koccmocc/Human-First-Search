@@ -1,16 +1,19 @@
-# Draft corpus format, schema version 1
+# Crawler corpus contract, schema version 1
 
 One UTF-8 JSON object per line; no BOM, no array wrapper. The CLI opens its file
 in binary mode and terminates each record with LF on Windows and Unix. Quotes,
 backslashes and control characters inside strings are escaped by nlohmann/json.
 The serializer validates UTF-8 before writing a record and produces deterministic
 compact JSON for the same `CrawledPage` values. No timestamps are generated during
-serialization. This contract is provisional until team integration.
+serialization. This is the crawler producer contract; acceptance by the real
+indexer is still an integration step. Required field names/types stay stable
+within schema 1; additive metadata is allowed, and incompatible changes require
+a schema bump. Start with the [indexer handoff guide](indexer-handoff.md).
 
 | Field | Current meaning |
 | --- | --- |
 | `schema_version` | Integer `1` |
-| `extractor_version` | `semantic-text-v3`: current `HtmlDocument::main_text()` rules |
+| `extractor_version` | `semantic-text-v4`: current `HtmlDocument::main_text()` rules |
 | `url_normalization_version` | `lexbor-url-v1`: current HTTP(S) URL resolution/serialization rules |
 | `page_id` | `sha256:` plus the SHA-256 of the canonical final URL |
 | `url` | Canonical final HTTP(S) URL, without fragment |
@@ -33,7 +36,7 @@ belongs to extraction; hashing and serialization do not additionally normalize
 Unicode or whitespace. Bump the corresponding version tag when extraction or
 URL normalization rules change.
 
-`semantic-text-v3` chooses the first nonempty HTML `main`, otherwise the first
+`semantic-text-v4` chooses the first nonempty HTML `main`, otherwise the first
 nonempty HTML `article`, otherwise the first nonempty HTML element with exact
 `role="main"`, otherwise the heading fallback below, otherwise filtered body.
 The role branch reports `main_role`.
@@ -44,7 +47,9 @@ nav/aside/footer and `hidden` subtrees; normalization retains the original body
 whitespace/entity rules. Content headers are retained. Container emptiness is
 checked after filtering. Only HTML-namespace containers qualify.
 
-The `heading` branch requires exactly one HTML `h1` outside skipped subtrees.
+The `heading` branch uses one HTML `h1` outside skipped subtrees, or one HTML
+`h2` only when no such h1 exists. Multiple h1s reject heading selection; a present
+but unusable h1 never falls through to h2. Multiple h2s reject the h2 fallback.
 Its immediate parent must be HTML `body`, `div` or `section`; the heading must
 yield nonempty text, and following siblings in that parent must yield at least
 200 normalized UTF-8 bytes after filtering. Selection joins the heading and those
@@ -62,6 +67,8 @@ discovery is independent of the selected text region. `semantic-text-v1` used
 main/article/body only; v2 can change text hashes for former body-fallback pages
 while leaving their URL-based IDs unchanged.
 Version v3 adds `heading`; older semantic branches keep their previous priority.
+Version v4 extends that branch to a unique h2 on documents without h1, retaining
+the same source label and content gate. See the [controlled h2 review](h2-fallback.md).
 Unmarked boilerplate within a heading region can remain, and useful text before
 the heading or outside its parent can be omitted. The heuristic does not prove
 that the selected region is a complete article.

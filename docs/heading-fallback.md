@@ -89,3 +89,6 @@ discovery outside the selected region.
 
 The subsequent [host scheduling review](frontier-scheduling.md) addresses the
 pilot's FIFO concentration while retaining this extraction version.
+
+Version v4 later adds the [unique-h2 case](h2-fallback.md) for documents with no
+h1. The h1 behavior described in this historical v3 review is retained.

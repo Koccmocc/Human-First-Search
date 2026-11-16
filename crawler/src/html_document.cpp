@@ -190,8 +190,11 @@ auto select_text(lxb_dom_node_t* root, HtmlTextSource source)
 auto select_heading_text(lxb_dom_node_t* root) -> std::optional<HtmlText>
 {
     lxb_dom_node_t* heading{};
+    lxb_dom_node_t* secondary{};
+    bool multiple_secondary{};
     auto* node = root->first_child;
-    // Require one non-skipped h1, rather than guessing between several page sections.
+    // A present h1 always governs selection, even when it later fails the content gate.
+    // Track h2 only as a fallback for documents with no non-skipped h1.
     // This scan and the bounded number of extraction passes stay iterative and linear.
     while (node != nullptr) {
         const bool descend = !skip_text(node, true);
@@ -201,6 +204,14 @@ auto select_heading_text(lxb_dom_node_t* root) -> std::optional<HtmlText>
                 return std::nullopt;
             }
             heading = node;
+        }
+        if (descend && node->type == LXB_DOM_NODE_TYPE_ELEMENT && node->ns == LXB_NS_HTML &&
+            node->local_name == LXB_TAG_H2) {
+            if (secondary != nullptr) {
+                multiple_secondary = true;
+            } else {
+                secondary = node;
+            }
         }
         if (descend && node->first_child != nullptr) {
             node = node->first_child;
@@ -216,6 +227,9 @@ auto select_heading_text(lxb_dom_node_t* root) -> std::optional<HtmlText>
         if (node != nullptr) {
             node = node->next;
         }
+    }
+    if (heading == nullptr && !multiple_secondary) {
+        heading = secondary;
     }
     if (heading == nullptr || heading->next == nullptr) {
         return std::nullopt;
@@ -236,7 +250,7 @@ auto select_heading_text(lxb_dom_node_t* root) -> std::optional<HtmlText>
     if (following.size() < minimum_following_bytes) {
         return std::nullopt;
     }
-    title += '\n'; // h1 is a block boundary under the existing normalization rules.
+    title += '\n'; // Both heading levels are block boundaries under existing normalization.
     title += following;
     return HtmlText{std::move(title), HtmlTextSource::heading};
 }

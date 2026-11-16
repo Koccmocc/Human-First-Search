@@ -284,6 +284,45 @@ TEST(HtmlDocument, HeadingFallbackThresholdMeasuresNormalizedUtf8Bytes)
     EXPECT_EQ(document.main_text().text, "Heading\n" + text);
 }
 
+TEST(HtmlDocument, HeadingFallbackUsesOneH2OnlyWhenH1IsAbsent)
+{
+    const std::string prose(200, 'p');
+    const hfs::HtmlDocument document{"<div>Menu<a href='/outside'>Outside</a></div>"
+        "<h2>Page &amp; heading</h2><p>" + prose + "</p><footer>Footer</footer>"};
+    EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::heading);
+    EXPECT_EQ(document.main_text().text, "Page & heading\n" + prose);
+    EXPECT_NE(document.body_text().find("Menu"), std::string::npos);
+    EXPECT_EQ(document.links(), (std::vector<std::string>{"/outside"}));
+    const hfs::HtmlDocument with_h1{"<h2>Earlier h2</h2><h2>Another h2</h2><p>" + prose +
+        "</p><h1>Primary h1</h1><p>" + prose + "</p>"};
+    EXPECT_EQ(with_h1.main_text().text, "Primary h1\n" + prose);
+}
+
+TEST(HtmlDocument, H2FallbackDoesNotOverrideAmbiguousOrUnusableH1)
+{
+    const std::string prose(200, 'p');
+    for (const auto& prefix : {std::string{"<h1>One</h1><h1>Two</h1>"},
+                               std::string{"<div><h1>Title-only wrapper</h1></div>"}, std::string{"<h1> </h1>"}}) {
+        const hfs::HtmlDocument document{prefix + "<h2>Secondary</h2><p>" + prose + "</p>"};
+        EXPECT_EQ(document.main_text().source, hfs::HtmlTextSource::body);
+    }
+}
+
+TEST(HtmlDocument, H2FallbackKeepsAmbiguityBoundsAndFilteringGuards)
+{
+    const std::string prose(200, 'p');
+    for (const auto& html : {"<h2>One</h2><p>" + prose + "</p><h2>Two</h2>",
+                            "<section><h2>Title-only wrapper</h2></section><p>" + prose + "</p>",
+                            "<h2>Heading</h2><p>" + std::string(199, 'p') + "</p>"}) {
+        EXPECT_EQ(hfs::HtmlDocument{html}.main_text().source, hfs::HtmlTextSource::body);
+    }
+    const hfs::HtmlDocument filtered{"<nav><h1>Menu</h1><h2>Menu</h2></nav>"
+        "<div hidden><h2>Hidden</h2></div><h2>Content</h2><p>" + prose + "</p>"};
+    EXPECT_EQ(filtered.main_text().text, "Content\n" + prose);
+    const hfs::HtmlDocument semantic{"<h2>Secondary</h2><p>" + prose + "</p><article>Article wins</article>"};
+    EXPECT_EQ(semantic.main_text().source, hfs::HtmlTextSource::article);
+}
+
 TEST(HtmlDocument, HeadingFallbackSupportsDeepContainersIteratively)
 {
     std::string html;
