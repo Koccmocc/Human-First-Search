@@ -37,7 +37,7 @@ class CliCrawl(unittest.TestCase):
 
     def verify_saved_run(self, manifest):
         tool = Path(__file__).resolve().parents[2] / "tools" / "verify_run.py"
-        result = subprocess.run([sys.executable, str(tool), str(manifest)],
+        result = subprocess.run([sys.executable, str(tool), str(manifest), "--check-pages"],
                                 capture_output=True, text=True, encoding="utf-8", timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)

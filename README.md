@@ -128,6 +128,7 @@ Verify saved results independently with the Python standard library:
 
 ```powershell
 python tools/verify_run.py data/config-pilot-run.json
+python tools/verify_run.py data/config-pilot-run.json --check-pages
 ```
 
 The read-only tool checks artifact SHA-256/byte counts, JSONL framing and schema
@@ -135,6 +136,13 @@ versions, record totals and journal outcome counts against the manifest. A
 changed or incomplete result exits 1. Use `--corpus PATH` and `--log PATH` when
 files have moved. This verifies integrity and accounting; content quality still
 needs a separate review. Details are in the manifest contract above.
+
+`--check-pages` additionally recomputes every URL/text SHA-256, rejects duplicate
+IDs or texts, checks page/request-chain hosts against the saved allowlist, and
+checks processing versions, depth, status, source and language-policy metadata.
+Its JSON report adds counts by host and text source. It needs a saved corpus
+and the manifest's configuration/processing metadata; it does not rerun the
+language model or assess extraction quality.
 
 For a wider diagnostic sample, use `--config config/pilot-five-hosts.json` with
 fresh output paths. The [five-host pilot report](docs/five-host-pilot-2026-11-13.md)

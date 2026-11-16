@@ -42,6 +42,28 @@ class VerifyRun(unittest.TestCase):
         return subprocess.run([sys.executable, str(TOOL), *map(str, arguments)],
                               capture_output=True, text=True, encoding="utf-8", timeout=5)
 
+    def audit_page(self, url="https://example.org/first", text=None):
+        text = text if text is not None else "The library welcomes readers and helps them find useful books. Caf\u00e9.\n" * 4
+        return {"schema_version": 1, "url": url, "text": text,
+                "page_id": "sha256:" + hashlib.sha256(url.encode()).hexdigest(),
+                "text_hash": "sha256:" + hashlib.sha256(text.encode()).hexdigest(),
+                "extractor_version": "semantic-text-v3", "url_normalization_version": "lexbor-url-v1",
+                "language_detection_version": "cld2-compact-v1", "text_source": "heading",
+                "http_status": 200, "depth": 1, "requested_urls": [url], "language": "en", "language_percent": 99}
+
+    def store_pages(self, pages):
+        self.corpus.write_bytes(b"".join((json.dumps(page, ensure_ascii=True) + "\n").encode() for page in pages))
+        self.record["summary"].update(pages=len(pages), targets=len(pages), fetch_failures=0)
+        self.record["artifacts"] = {"corpus": self.descriptor(self.corpus), "journal": None}
+        self.save_manifest()
+
+    def enable_page_audit(self):
+        self.record["configuration"] = {"allowed_hosts": ["example.org", "other.example", "[::1]"],
+                                        "language": "en", "max_depth": 3}
+        self.record["processing"] = {"extractor": "semantic-text-v3", "url_normalization": "lexbor-url-v1",
+                                     "language_detection": "cld2-compact-v1"}
+        self.store_pages([self.audit_page()])
+
     def test_valid_files_are_verified_without_modification(self):
         before = [path.read_bytes() for path in (self.manifest, self.corpus, self.log)]
         report = verify_run(self.manifest)
@@ -148,6 +170,119 @@ class VerifyRun(unittest.TestCase):
             self.assertTrue(result.stderr.startswith("error: "))
             self.assertNotIn("Traceback", result.stderr)
         self.assertEqual(self.run_tool().returncode, 2)
+
+    def test_page_audit_checks_utf8_hashes_and_reports_host_and_source_counts(self):
+        self.enable_page_audit()
+        first = self.audit_page()
+        second = self.audit_page("https://other.example/second", "Different text with \u00e9 and a control \x01.")
+        second["text_source"] = "main"
+        self.store_pages([first, second])
+        before = self.corpus.read_bytes()
+        result = self.run_tool(self.manifest, "--check-pages")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["page_audit"], {
+            "checked_pages": 2, "pages_by_host": {"example.org": 1, "other.example": 1},
+            "text_sources": {"heading": 1, "main": 1}, "text_characters": len(first["text"]) + len(second["text"])})
+        self.assertEqual(self.corpus.read_bytes(), before)
+        self.assertNotIn("page_audit", verify_run(self.manifest))
+
+    def test_page_audit_rejects_wrong_ids_and_hashes_even_with_updated_file_fingerprint(self):
+        self.enable_page_audit()
+        for field, value in (("page_id", "sha256:" + "0" * 64), ("text_hash", "sha256:" + "1" * 64),
+                             ("text", "Changed content")):
+            with self.subTest(field=field):
+                page = self.audit_page()
+                page[field] = value
+                self.store_pages([page])
+                # Basic integrity passes: semantic auditing must detect the inconsistency.
+                verify_run(self.manifest)
+                with self.assertRaisesRegex(ValueError, "page_id|text_hash"):
+                    verify_run(self.manifest, check_pages=True)
+
+    def test_page_audit_rejects_duplicate_urls_and_texts_with_record_context(self):
+        self.enable_page_audit()
+        first = self.audit_page()
+        for second, message in ((first, "Duplicate page_id"),
+                                (self.audit_page("https://example.org/copy", first["text"]), "Duplicate text_hash")):
+            self.store_pages([first, second])
+            with self.assertRaisesRegex(ValueError, r":2: " + message):
+                verify_run(self.manifest, check_pages=True)
+
+    def test_page_audit_checks_processing_versions_depth_status_chain_and_language(self):
+        self.enable_page_audit()
+        for field, value in (("extractor_version", "other"), ("url_normalization_version", "other"),
+                             ("language_detection_version", None), ("text_source", "unknown"),
+                             ("http_status", 404), ("http_status", True), ("depth", 4), ("depth", True),
+                             ("requested_urls", []), ("requested_urls", ["https://example.org/other"]),
+                             ("requested_urls", ["https://outside.invalid/", "https://example.org/first"]),
+                             ("requested_urls", ["https://example.org/bad\ud800", "https://example.org/first"]),
+                             ("language", "de"), ("language", None), ("language_percent", True),
+                             ("language_percent", 101), ("text", "")):
+            with self.subTest(field=field, value=value):
+                page = self.audit_page()
+                page[field] = value
+                self.store_pages([page])
+                with self.assertRaises(ValueError):
+                    verify_run(self.manifest, check_pages=True)
+
+    def test_page_audit_checks_scope_without_trusting_host_names_in_query_strings(self):
+        self.enable_page_audit()
+        for url in ("https://outside.invalid/?next=example.org", "https://example.org.evil.invalid/",
+                    "https://user:pass@example.org/", "https://example.org/a#fragment", "file:///example.org",
+                    "https://example.org:99999/", "https://example.org/a b", "https://example.org/\\path"):
+            with self.subTest(url=url):
+                self.store_pages([self.audit_page(url)])
+                with self.assertRaises(ValueError):
+                    verify_run(self.manifest, check_pages=True)
+        self.store_pages([self.audit_page("http://[::1]:8080/article")])
+        self.assertEqual(verify_run(self.manifest, check_pages=True)["page_audit"]["pages_by_host"], {"[::1]": 1})
+
+    def test_page_audit_supports_unknown_language_only_in_diagnostic_mode(self):
+        self.enable_page_audit()
+        self.record["configuration"]["language"] = "any"
+        for code, percent in ((None, None), ("de", 95)):
+            page = self.audit_page()
+            page.update(language=code, language_percent=percent)
+            self.store_pages([page])
+            self.assertEqual(verify_run(self.manifest, check_pages=True)["page_audit"]["checked_pages"], 1)
+        for code, percent in ((None, 0), ("de", None), ("", 95)):
+            page.update(language=code, language_percent=percent)
+            self.store_pages([page])
+            with self.assertRaises(ValueError):
+                verify_run(self.manifest, check_pages=True)
+        del page["language"]
+        self.store_pages([page])
+        with self.assertRaisesRegex(ValueError, "Missing language"):
+            verify_run(self.manifest, check_pages=True)
+
+    def test_page_audit_requires_corpus_and_processing_metadata_but_accepts_empty_corpus(self):
+        self.enable_page_audit()
+        self.store_pages([])
+        report = verify_run(self.manifest, check_pages=True)["page_audit"]
+        self.assertEqual(report, {"checked_pages": 0, "pages_by_host": {}, "text_sources": {}, "text_characters": 0})
+        self.record["artifacts"]["corpus"] = None
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "requires a saved corpus"):
+            verify_run(self.manifest, check_pages=True)
+        self.enable_page_audit()
+        self.record.pop("processing")
+        self.save_manifest()
+        result = self.run_tool(self.manifest, "--check-pages")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout, "")
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_page_audit_honors_copied_corpus_override_and_rejects_unpaired_surrogates(self):
+        self.enable_page_audit()
+        copied = self.corpus.with_name("copied.jsonl")
+        self.corpus.rename(copied)
+        result = self.run_tool(self.manifest, "--check-pages", "--corpus", copied)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        page = self.audit_page()
+        page["text"] = "Broken\ud800"
+        self.store_pages([page])
+        with self.assertRaisesRegex(ValueError, ":1:"):
+            verify_run(self.manifest, check_pages=True)
 
 
 if __name__ == "__main__":

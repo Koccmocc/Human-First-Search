@@ -84,8 +84,8 @@ python tools/verify_run.py data/pilot-run.json
 
 It uses only the Python 3 standard library. It reads the saved corpus and/or
 journal from the manifest's absolute paths, hashes the exact bytes with
-`hashlib`, and compares their sizes and SHA-256 fingerprints. JSONL is read one
-line at a time, so memory depends on the largest record, not the total corpus.
+`hashlib`, and compares their sizes and SHA-256 fingerprints. Basic integrity mode
+reads JSONL one line at a time, so memory depends on the largest record, not the total corpus.
 The manifest itself is read into memory.
 
 Every record must be a UTF-8 JSON object with integer `schema_version: 1` and
@@ -112,8 +112,59 @@ artifacts' record counts, byte counts and hashes. A missing/corrupt file or
 inconsistent manifest exits `1`, with an error on stderr and no success report;
 invalid command syntax exits `2`. No files are created or modified.
 
-This checks integrity and accounting against the supplied manifest. It does not
+Basic mode checks integrity and accounting against the supplied manifest. It does not
 validate every corpus field, recompute per-page IDs/text hashes, prove English
 or extraction quality, or establish the manifest's authenticity. Keep files
 unchanged while checking them. The verifier can check a normally finished run
 with fetch failures or zero pages; it does not enforce the final corpus size.
+
+## Audit page identities and metadata
+
+For stronger checks before sharing a corpus, add `--check-pages`:
+
+```powershell
+python tools/verify_run.py data/pilot-run.json --check-pages
+```
+
+This opt-in mode requires a saved corpus and the manifest's
+`configuration.allowed_hosts`, `configuration.language`, `configuration.max_depth`
+and extractor/URL/language processing versions. It can be combined with the
+existing `--corpus`/`--log` path overrides. Earlier minimal manifests or manually
+constructed exports may support only basic verification.
+
+For every corpus record it checks:
+
+- Nonempty text and SHA-256 of the exact UTF-8 URL/text bytes, without additional
+  whitespace or Unicode normalization. Stored `page_id` and `text_hash` must match.
+- Unique page IDs/URLs and text hashes within that corpus.
+- Absolute credential-free HTTP(S) page/request-chain URLs, without literal
+  controls, whitespace, backslashes or fragments; every hostname must be allowed.
+  IPv6 host matching uses the config's bracketed form. The request chain must be
+  nonempty and end at the record URL.
+- Matching extractor/URL/language processing versions, a known `text_source`,
+  integer status 200 and a nonnegative depth within the configured limit.
+- Language metadata consistent with `en` or `any` admission: English-only records
+  declare `en`; known codes have integer share 1–100; unknown codes/shares are
+  both null and allowed only in diagnostic `any` mode. Analysis version is required.
+
+Success adds `page_audit` to the JSON report: `checked_pages`, `pages_by_host`,
+`text_sources` and `text_characters`. Counts describe only saved delivered pages.
+An empty corpus can pass with zero counts. Errors include the corpus path and
+line number and produce no success report. Inputs remain read-only.
+
+The audit retains sets of identity/text digests and small counters, so additional
+memory grows with the number of pages; it does not retain full texts. UTF-8
+encoding rejects escaped unpaired surrogates in URL/text values.
+
+This checks a defined set of record invariants, not the entire schema. Python's
+URL parser checks basic structure/scope independently; it does not reproduce
+Lexbor canonicalization. The audit does not rerun CLD2, validate extraction quality,
+validate timestamps/title/content-type fields, or match individual delivered
+journal events to corpus rows. Existing journal counts are still verified.
+It does not authenticate the supplied manifest or enforce final corpus size.
+
+Eight additional verifier scenarios cover hashes even after updating the whole-file
+fingerprint, duplicate identities/texts, versions/policy/scope, IPv6, bad UTF-8
+surrogates, empty/absent corpus and moved paths. All 15 Python scenarios run inside
+the existing CTest verifier entry; CLI fixture tests now also enable page auditing.
+Offline checks accepted the saved eight-page v2 and twenty-page v3 pilot artifacts.

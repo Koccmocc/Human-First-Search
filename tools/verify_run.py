@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 
 
 OUTCOME_COUNTERS = {
@@ -55,7 +56,91 @@ def nonnegative_integer(value, context):
     return value
 
 
-def verify_artifact(path, descriptor, kind, summary):
+class PageAudit:
+    """Check current CLI page identities and scope without loading corpus texts into an index."""
+
+    def __init__(self, manifest):
+        config = manifest.get("configuration")
+        processing = manifest.get("processing")
+        require(isinstance(config, dict) and isinstance(processing, dict),
+                "Page audit requires configuration and processing objects")
+        hosts = config.get("allowed_hosts")
+        require(isinstance(hosts, list) and hosts and all(isinstance(host, str) and host for host in hosts),
+                "Page audit requires nonempty allowed_hosts")
+        self.hosts = set(hosts)
+        self.policy = config.get("language")
+        require(self.policy in ("en", "any"), "Page audit requires language en or any")
+        self.max_depth = nonnegative_integer(config.get("max_depth"), "configuration.max_depth")
+        self.versions = {}
+        for field, key in (("extractor_version", "extractor"), ("url_normalization_version", "url_normalization"),
+                           ("language_detection_version", "language_detection")):
+            value = processing.get(key)
+            require(isinstance(value, str) and value, f"Page audit requires processing.{key}")
+            self.versions[field] = value
+        self.ids = set()
+        self.hashes = set()
+        self.by_host = Counter()
+        self.by_source = Counter()
+        self.characters = 0
+
+    def url_host(self, url):
+        require(isinstance(url, str) and url, "Expected a nonempty URL string")
+        _ = url.encode("utf-8")  # JSON escapes can represent unpaired surrogates; real URLs cannot.
+        require(not any(ord(char) <= 0x20 or ord(char) == 0x7f for char in url) and
+                "\\" not in url and "#" not in url, "URL contains controls, whitespace, backslash or fragment")
+        parsed = urlsplit(url)
+        require(parsed.scheme in ("http", "https") and parsed.hostname is not None and
+                parsed.username is None and parsed.password is None, "Expected a credential-free absolute HTTP(S) URL")
+        _ = parsed.port  # Force validation of malformed or out-of-range ports.
+        host = parsed.hostname
+        if ":" in host:
+            host = "[" + host + "]"  # Lexbor/config serialize IPv6 hosts with brackets.
+        require(host in self.hosts, f"URL host is outside allowed_hosts: {host}")
+        return host
+
+    def check(self, page):
+        url = page.get("url")
+        host = self.url_host(url)
+        text = page.get("text")
+        require(isinstance(text, str) and text, "Expected nonempty extracted text")
+        page_id = "sha256:" + hashlib.sha256(url.encode("utf-8")).hexdigest()
+        text_hash = "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        require(page.get("page_id") == page_id, "page_id does not match exact URL bytes")
+        require(page.get("text_hash") == text_hash, "text_hash does not match exact text bytes")
+        require(page_id not in self.ids, "Duplicate page_id/URL in corpus")
+        require(text_hash not in self.hashes, "Duplicate text_hash in corpus")
+        for field, value in self.versions.items():
+            require(page.get(field) == value, f"{field} differs from manifest processing version")
+        source = page.get("text_source")
+        require(source in ("main", "article", "main_role", "heading", "body"), "Unknown text_source")
+        require(type(page.get("http_status")) is int and page["http_status"] == 200, "Expected http_status 200")
+        depth = nonnegative_integer(page.get("depth"), "page.depth")
+        require(depth <= self.max_depth, "Page depth exceeds configured maximum")
+        chain = page.get("requested_urls")
+        require(isinstance(chain, list) and chain, "Expected a nonempty requested_urls chain")
+        for requested in chain:
+            self.url_host(requested)
+        require(chain[-1] == url, "requested_urls does not end at the page URL")
+        require("language" in page and "language_percent" in page, "Missing language metadata")
+        code, percent = page["language"], page["language_percent"]
+        if code is None:
+            require(self.policy == "any" and percent is None, "Unknown language is inconsistent with admission policy")
+        else:
+            require(isinstance(code, str) and code and type(percent) is int and 1 <= percent <= 100,
+                    "Invalid detected language metadata")
+            require(self.policy != "en" or code == "en", "Non-English page in English-only corpus")
+        self.ids.add(page_id)
+        self.hashes.add(text_hash)
+        self.by_host[host] += 1
+        self.by_source[source] += 1
+        self.characters += len(text)
+
+    def report(self):
+        return {"checked_pages": len(self.ids), "pages_by_host": dict(sorted(self.by_host.items())),
+                "text_sources": dict(sorted(self.by_source.items())), "text_characters": self.characters}
+
+
+def verify_artifact(path, descriptor, kind, summary, page_audit=None):
     require(isinstance(descriptor, dict), f"{kind}: expected an artifact object")
     expected_bytes = nonnegative_integer(descriptor.get("bytes"), f"{kind}.bytes")
     expected_hash = descriptor.get("sha256")
@@ -72,6 +157,11 @@ def verify_artifact(path, descriptor, kind, summary):
             digest.update(raw)
             byte_count += len(raw)
             record = read_object(raw, context)
+            if kind == "corpus" and page_audit is not None:
+                try:
+                    page_audit.check(record)
+                except ValueError as error:
+                    raise ValueError(f"{context}: {error}") from error
             if kind == "journal":
                 require(record.get("event") == "crawl_target", f"{context}: expected crawl_target event")
                 outcome = record.get("outcome")
@@ -90,7 +180,7 @@ def verify_artifact(path, descriptor, kind, summary):
     return {"records": records, "bytes": byte_count, "sha256": actual_hash}
 
 
-def verify_run(manifest_path, corpus_path=None, log_path=None):
+def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=False):
     manifest = read_object(Path(manifest_path).read_bytes(), str(manifest_path))
     require(manifest.get("completed") is True, "Manifest does not mark a completed run")
     summary = manifest.get("summary")
@@ -103,6 +193,10 @@ def verify_run(manifest_path, corpus_path=None, log_path=None):
             "Summary outcome counters do not add up to targets")
     artifacts = manifest.get("artifacts")
     require(isinstance(artifacts, dict), "Manifest has no artifacts object")
+    page_audit = None
+    if check_pages:
+        require(artifacts.get("corpus") is not None, "--check-pages requires a saved corpus")
+        page_audit = PageAudit(manifest)
     verified = {}
     for kind, override in (("corpus", corpus_path), ("journal", log_path)):
         require(kind in artifacts, f"Manifest is missing artifacts.{kind}")
@@ -116,9 +210,12 @@ def verify_run(manifest_path, corpus_path=None, log_path=None):
         path = Path(override) if override is not None else Path(saved_path)
         require(override is not None or path.is_absolute(),
                 f"{kind}: recorded path is not absolute on this OS; supply a path override")
-        verified[kind] = verify_artifact(path, descriptor, kind, summary)
+        verified[kind] = verify_artifact(path, descriptor, kind, summary, page_audit)
     require(verified, "Manifest has no saved corpus or journal to verify")
-    return {"verified": True, "artifacts": verified}
+    report = {"verified": True, "artifacts": verified}
+    if page_audit is not None:
+        report["page_audit"] = page_audit.report()
+    return report
 
 
 def main():
@@ -126,9 +223,10 @@ def main():
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--corpus", type=Path, help="Location of a copied corpus; recorded hash still applies")
     parser.add_argument("--log", type=Path, help="Location of a copied journal; recorded hash still applies")
+    parser.add_argument("--check-pages", action="store_true", help="Also audit page hashes, uniqueness, scope and metadata")
     arguments = parser.parse_args()
     try:
-        report = verify_run(arguments.manifest, arguments.corpus, arguments.log)
+        report = verify_run(arguments.manifest, arguments.corpus, arguments.log, check_pages=arguments.check_pages)
     except (OSError, ValueError, RecursionError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
