@@ -20,6 +20,7 @@ DOCUMENTS = (
     "crawl-log-format.md", "html-parser.md", "heading-fallback.md", "h2-fallback.md",
     "frontier-scheduling.md", "frontier-admission.md", "pending-host-cap.md",
     "live-pilot-2026-11-13.md", "five-host-pilot-2026-11-13.md", "pilot-100-pages-2026-11-16.md",
+    "pilot-500-pages-2026-11-16.md",
 )
 
 

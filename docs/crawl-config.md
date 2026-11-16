@@ -22,6 +22,12 @@ scheduling time. It keeps the five-host scope and one-second delay, with two
 English seeds per host. The [100-page report](pilot-100-pages-2026-11-16.md)
 records the observed results, queue saturation and content-review findings.
 
+`config/pilot-500-pages.json` targets 500 pages across six allowed hosts, adding
+kernel.org documentation to the original five. It uses 1500 targets, depth 2,
+3000 pending URLs with a 500-entry host cap, 5000 admitted URLs and a fifteen-minute
+scheduling budget. Delay and English policy are unchanged. The
+[500-page report](pilot-500-pages-2026-11-16.md) records actual coverage and limits.
+
 | Key | Type and meaning |
 | --- | --- |
 | `schema_version` | Required integer `1` |

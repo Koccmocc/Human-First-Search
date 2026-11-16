@@ -57,6 +57,12 @@ consistency; it does not certify relevance or boilerplate-free text.
 Other archives can have different counts/versions; inspect their manifest and
 audit report. Historical reports in `docs/` describe their own runs.
 
+The subsequent [500-page snapshot](pilot-500-pages-2026-11-16.md) is the larger
+local handoff at `data/indexer-handoff-500.zip`. It contains 500 accepted English
+pages across Kernel, PostgreSQL, Python, RFC Editor and SQLite. It meets the
+lower planned volume; the report records sampled quality issues and the earlier
+DNS-related shortfall. Verify and read the archive using the same commands above.
+
 The crawler source is in the team's
 [`crawler` branch](https://github.com/Grompesto/human-first-search/tree/crawler).
 `SOURCE_COMMIT.txt` records the caller-declared producing revision. The
@@ -143,7 +149,7 @@ page. Repeat ingestion to check upsert behavior and test a changed text hash
 under the same page ID. These checks require the real indexer and have not been
 claimed as completed by crawler-only tests.
 
-The initial 100-page snapshot is smaller than the planned 500–1000-page corpus.
+The newer 500-page snapshot reaches the lower planned 500–1000-page corpus size.
 Body fallback, in-page navigation and directory/archive/release-list content can
 remain. Language admission is statistical, and page sources are quality-review
 signals rather than quality guarantees. The accompanying extraction review

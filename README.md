@@ -188,6 +188,13 @@ same five hosts, with a five-minute scheduling budget and depth 2. The
 21/19/21/20/19 page distribution, typed failures, queue saturation and remaining
 content-quality work. These 100 records are an intermediate local corpus.
 
+`config/pilot-500-pages.json` targets the next corpus size: 500 pages, 1500
+targets and a fifteen-minute scheduling budget. It retains the original five
+allowed hosts and adds Linux Kernel documentation, with 3000 global pending
+slots and a 500-entry host cap. Delay, robots and English admission stay enabled.
+The [500-page report](docs/pilot-500-pages-2026-11-16.md) records actual coverage,
+artifact identities, content samples and the indexer handoff.
+
 ## Export JSONL records
 
 Choose a new output file and run from the repository root:
