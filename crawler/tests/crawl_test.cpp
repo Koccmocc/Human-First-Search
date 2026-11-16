@@ -141,6 +141,31 @@ TEST_F(Crawl, DiscoversLinksInBreadthFirstOrderUnderRobotsAndScopePolicy)
     EXPECT_EQ(summary.pending_urls, 0U);
 }
 
+TEST_F(Crawl, ReportsAdmissionReasonsForSeedsAndLinksUnderBothCapacityLimits)
+{
+    options.frontier.max_pending = 1;
+    options.frontier.max_depth = 1;
+    for (const std::size_t url_limit : {2U, 3U}) {
+        SCOPED_TRACE(url_limit);
+        pages.clear();
+        options.frontier.max_urls = url_limit;
+        const auto summary = run({base + "/admission/start", base + "/admission/start#duplicate",
+                                  "file:///invalid", "https://outside.invalid/"});
+        EXPECT_EQ(summary.pages, 2U);
+        EXPECT_EQ(summary.targets_processed, 2U);
+        EXPECT_EQ(summary.pending_urls, 0U);
+        EXPECT_EQ(summary.rejected_seeds, 3U);
+        EXPECT_EQ(summary.admission.added, 2U);
+        EXPECT_EQ(summary.admission.duplicate, 2U);
+        EXPECT_EQ(summary.admission.invalid_url, 2U);
+        EXPECT_EQ(summary.admission.out_of_scope, 2U);
+        EXPECT_EQ(summary.admission.depth_limit, 2U);
+        EXPECT_EQ(summary.admission.queue_full, url_limit == 3 ? 2U : 0U);
+        EXPECT_EQ(summary.admission.url_limit, url_limit == 2 ? 2U : 0U);
+        EXPECT_EQ(summary.admission.added, summary.targets_processed + summary.pending_urls);
+    }
+}
+
 TEST_F(Crawl, RoundRobinsTwoHostsAtEachDepthDespiteUnequalLinkCounts)
 {
     std::string other = base;

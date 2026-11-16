@@ -82,7 +82,7 @@ exist; destinations already present at the preflight check are rejected. Stderr
 contains a single session summary such as:
 
 ```text
-crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 non_english_pages=0 unknown_language_pages=0 rejected_seeds=0 pending_urls=0
+crawl: stop=queue_empty pages=3 targets=4 fetch_failures=1 skipped_responses=0 empty_texts=0 duplicate_pages=0 duplicate_texts=0 non_english_pages=0 unknown_language_pages=0 rejected_seeds=0 pending_urls=0 admission_added=4 admission_duplicate=2 admission_invalid_url=0 admission_out_of_scope=1 admission_depth_limit=0 admission_queue_full=0 admission_url_limit=0
 ```
 
 Exit `0` means the session completed normally, including a configured limit or
@@ -96,6 +96,13 @@ Argument unit tests cover canonicalization, ownership, numeric boundaries and
 invalid inputs. `crawler.cli_crawl` uses the real executable against the local
 fixture to verify discovery, limits, validation before requests and failed-page
 statistics. It needs no internet.
+
+The CLI summary and run manifest also expose seven `admission_*` counters for
+completed seed/link offers: added, duplicate, invalid URL, out of scope, depth
+limit, queue full and total URL limit. Repeated rejected offers count separately;
+they do not count unique lost pages. See [frontier admission](docs/frontier-admission.md)
+for check priority and accounting rules. These counters explain queue pressure
+without changing the crawl policy.
 
 ## Run from a saved configuration
 
@@ -1040,7 +1047,7 @@ Development builds can use a local checkout of the pinned commit via
 `-DFETCHCONTENT_SOURCE_DIR_CLD2=<absolute-path>`. Generated dependency sources
 remain under ignored build directories. Debug/Release checks on MinGW used this
 override. An isolated CMake configure also verified automatic FetchContent
-retrieval of the pinned commit without the CLD2 override. The full 158-test CTest
+retrieval of the pinned commit without the CLD2 override. The full 160-test CTest
 suite passes in both configurations; other operating systems remain unverified.
 
 ### Bounded language detection interface

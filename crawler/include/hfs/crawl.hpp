@@ -71,6 +71,7 @@ struct CrawlSummary {
     std::size_t unknown_language_pages{};
     std::size_t rejected_seeds{};
     std::size_t pending_urls{};
+    AdmissionCounts admission; // Completed seed/link offers, rather than unique rejected URLs.
 };
 
 // The page is borrowed only during the call. Copy it if it must outlive the callback.

@@ -32,6 +32,7 @@ TEST(Manifest, RecordsEffectiveDefaultsAndReplayableConfigurationWithSuppliedTim
     summary.pages = 7;
     summary.targets_processed = 12;
     summary.pending_urls = 4;
+    summary.admission = {16, 3, 2, 4, 5, 6, 7};
     const hfs::RunTiming timing{std::chrono::system_clock::time_point{std::chrono::milliseconds{1000}},
         std::chrono::system_clock::time_point{std::chrono::milliseconds{4000}}, std::chrono::milliseconds{2900}};
     std::ostringstream output;
@@ -43,6 +44,13 @@ TEST(Manifest, RecordsEffectiveDefaultsAndReplayableConfigurationWithSuppliedTim
     EXPECT_EQ(record["summary"]["pages"], 7);
     EXPECT_EQ(record["summary"]["targets"], 12);
     EXPECT_EQ(record["summary"]["pending_urls"], 4);
+    EXPECT_EQ(record["summary"]["admission_added"], 16);
+    EXPECT_EQ(record["summary"]["admission_duplicate"], 3);
+    EXPECT_EQ(record["summary"]["admission_invalid_url"], 2);
+    EXPECT_EQ(record["summary"]["admission_out_of_scope"], 4);
+    EXPECT_EQ(record["summary"]["admission_depth_limit"], 5);
+    EXPECT_EQ(record["summary"]["admission_queue_full"], 6);
+    EXPECT_EQ(record["summary"]["admission_url_limit"], 7);
     EXPECT_EQ(record["timing"]["started_at_unix_ms"], 1000);
     EXPECT_EQ(record["timing"]["finished_at_unix_ms"], 4000);
     EXPECT_EQ(record["timing"]["elapsed_ms"], 2900); // Steady time is supplied independently.

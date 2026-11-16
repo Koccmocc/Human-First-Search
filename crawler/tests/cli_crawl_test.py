@@ -193,6 +193,23 @@ class CliCrawl(unittest.TestCase):
         self.assertRegex(record["fetched_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         return datetime.strptime(record["fetched_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
+    def test_admission_counts_match_cli_manifest_and_verifier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            corpus = Path(directory) / "admission.jsonl"
+            manifest = Path(directory) / "run.json"
+            result = self.run_crawl("--seed", BASE + "/admission/start", "--max-depth", "1",
+                "--max-pending", "1", "--max-urls", "3", "--output", str(corpus), "--manifest", str(manifest))
+            summary = self.summary(result)
+            expected = {"added": 2, "duplicate": 1, "invalid_url": 1, "out_of_scope": 1,
+                        "depth_limit": 2, "queue_full": 2, "url_limit": 0}
+            record = json.loads(manifest.read_bytes())
+            for reason, count in expected.items():
+                key = "admission_" + reason
+                self.assertEqual(summary[key], str(count))
+                self.assertEqual(record["summary"][key], count)
+            self.assertEqual(int(summary["admission_added"]), int(summary["targets"]) + int(summary["pending_urls"]))
+            self.verify_saved_run(manifest)
+
     def test_heading_fallback_exports_selected_text_and_discovers_links_outside_it(self):
         with tempfile.TemporaryDirectory() as directory:
             corpus = Path(directory) / "heading.jsonl"

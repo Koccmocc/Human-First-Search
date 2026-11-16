@@ -117,7 +117,14 @@ auto run(int argc, char* argv[]) -> int
                   << " non_english_pages=" << summary.non_english_pages
                   << " unknown_language_pages=" << summary.unknown_language_pages
                   << " rejected_seeds=" << summary.rejected_seeds
-                  << " pending_urls=" << summary.pending_urls << '\n';
+                  << " pending_urls=" << summary.pending_urls
+                  << " admission_added=" << summary.admission.added
+                  << " admission_duplicate=" << summary.admission.duplicate
+                  << " admission_invalid_url=" << summary.admission.invalid_url
+                  << " admission_out_of_scope=" << summary.admission.out_of_scope
+                  << " admission_depth_limit=" << summary.admission.depth_limit
+                  << " admission_queue_full=" << summary.admission.queue_full
+                  << " admission_url_limit=" << summary.admission.url_limit << '\n';
         std::cerr.flush();
         if (!std::cerr) {
             throw std::runtime_error{"Could not flush crawl summary to stderr"};

@@ -152,6 +152,7 @@ auto crawl(std::span<const std::string> seeds, std::vector<std::string> allowed_
         notify(event);
     }
     summary.pending_urls = frontier.size();
+    summary.admission = frontier.admission_counts();
     return summary;
 }
 

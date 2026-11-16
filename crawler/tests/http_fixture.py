@@ -107,6 +107,13 @@ class Handler(BaseHTTPRequestHandler):
             "/content/copy-child": b'<p>Copy child</p>',
         }
         body = crawl_pages.get(self.path, body)
+        if self.path == "/admission/start":
+            body = (b'<p>Admission root</p><a href="/admission/a">A</a>'
+                    b'<a href="/admission/a#part">Again</a><a href="mailto:x@example.org">Mail</a>'
+                    b'<a href="https://outside.invalid/">Outside</a>'
+                    b'<a href="/admission/b">B</a><a href="/admission/c">C</a>')
+        elif self.path == "/admission/a":
+            body = b'<p>Admission child</p><a href="/deep">Deep</a><a href="mailto:x@example.org">Mail</a>'
         if self.path in ("/balance/a-root", "/balance/b-root"):
             host = "a" if self.path == "/balance/a-root" else "b"
             count = 12 if host == "a" else 3

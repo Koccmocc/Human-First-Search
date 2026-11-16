@@ -171,6 +171,30 @@ class VerifyRun(unittest.TestCase):
             self.assertNotIn("Traceback", result.stderr)
         self.assertEqual(self.run_tool().returncode, 2)
 
+    def test_admission_counters_are_optional_but_complete_and_consistent_when_present(self):
+        counts = {"admission_" + key: 0 for key in
+                  ("added", "duplicate", "invalid_url", "out_of_scope", "depth_limit", "queue_full", "url_limit")}
+        counts.update(admission_added=2, admission_queue_full=3)
+        self.record["summary"].update(counts)
+        self.save_manifest()
+        verify_run(self.manifest)
+        for key, value in (("admission_added", 3), ("admission_added", True), ("admission_queue_full", -1)):
+            with self.subTest(key=key, value=value):
+                self.record["summary"].update(counts)
+                self.record["summary"][key] = value
+                self.save_manifest()
+                with self.assertRaises(ValueError):
+                    verify_run(self.manifest)
+        self.record["summary"].update(counts)
+        del self.record["summary"]["admission_url_limit"]
+        self.save_manifest()
+        with self.assertRaises(ValueError):
+            verify_run(self.manifest)
+        self.record["summary"].update(counts, rejected_seeds=4)
+        self.save_manifest()
+        with self.assertRaisesRegex(ValueError, "Rejected seed"):
+            verify_run(self.manifest)
+
     def test_page_audit_checks_utf8_hashes_and_reports_host_and_source_counts(self):
         self.enable_page_audit()
         first = self.audit_page()

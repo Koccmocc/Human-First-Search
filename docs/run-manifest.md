@@ -95,6 +95,12 @@ non-JSON constants such as `NaN` are rejected. Corpus records must match
 outcomes; their total must match `summary.targets`, and every outcome count must
 match its summary counter. Outcome counters must also add up to targets.
 
+New manifests also carry seven flat `summary.admission_*` counters. The verifier
+accepts older manifests without this entire group; when present it requires all
+seven nonnegative integers, `admission_added = targets + pending_urls`, and a
+rejected-admission total at least as large as `rejected_seeds`. See the
+[admission contract](frontier-admission.md) for meanings and check priority.
+
 For files copied to another directory or operating system, override their
 locations while retaining the original sizes and hashes:
 

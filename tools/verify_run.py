@@ -191,6 +191,16 @@ def verify_run(manifest_path, corpus_path=None, log_path=None, *, check_pages=Fa
             "Unknown summary stop reason")
     require(sum(summary[key] for key in OUTCOME_COUNTERS.values()) == summary["targets"],
             "Summary outcome counters do not add up to targets")
+    admission_fields = ["admission_" + outcome for outcome in
+                        ("added", "duplicate", "invalid_url", "out_of_scope", "depth_limit", "queue_full", "url_limit")]
+    # Older schema-1 manifests omit this whole group; missing counters are unknown, not zero.
+    if any(key in summary for key in admission_fields):
+        for key in admission_fields:
+            nonnegative_integer(summary.get(key), "summary." + key)
+        require(summary["admission_added"] == summary["targets"] + summary["pending_urls"],
+                "Admission added count differs from targets plus pending URLs")
+        require(summary["rejected_seeds"] <= sum(summary[key] for key in admission_fields[1:]),
+                "Rejected seed count exceeds all rejected admission attempts")
     artifacts = manifest.get("artifacts")
     require(isinstance(artifacts, dict), "Manifest has no artifacts object")
     page_audit = None

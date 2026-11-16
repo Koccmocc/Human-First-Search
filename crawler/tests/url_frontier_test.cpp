@@ -210,3 +210,43 @@ TEST(UrlFrontier, RequiresPositiveQueueAndTotalLimits)
     EXPECT_THROW((hfs::UrlFrontier{{"example.org"}, {0, 10, 3}}), std::invalid_argument);
     EXPECT_THROW((hfs::UrlFrontier{{"example.org"}, {10, 0, 3}}), std::invalid_argument);
 }
+
+TEST(UrlFrontier, CountsOneOutcomePerCompletedAdmissionWithExistingCheckPriority)
+{
+    hfs::UrlFrontier frontier{{"example.org"}, {1, 2, 0}};
+    EXPECT_EQ(frontier.admission_counts().added, 0U);
+    EXPECT_EQ(frontier.add_seed("file:///invalid"), EnqueueResult::invalid_url);
+    EXPECT_EQ(frontier.add_seed("https://outside.invalid/"), EnqueueResult::out_of_scope);
+    ASSERT_EQ(frontier.add_seed("https://example.org/a"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://example.org/a#part"), EnqueueResult::duplicate);
+    EXPECT_EQ(frontier.add_seed("https://example.org/b"), EnqueueResult::queue_full);
+    EXPECT_EQ(frontier.add_link({"https://example.org/a", 0}, "mailto:x@example.org"), EnqueueResult::depth_limit);
+    ASSERT_TRUE(frontier.pop());
+    ASSERT_EQ(frontier.add_seed("https://example.org/b"), EnqueueResult::added);
+    EXPECT_EQ(frontier.add_seed("https://example.org/c"), EnqueueResult::url_limit);
+    const auto counts = frontier.admission_counts();
+    EXPECT_EQ(counts.added, 2U);
+    EXPECT_EQ(counts.duplicate, 1U);
+    EXPECT_EQ(counts.invalid_url, 1U);
+    EXPECT_EQ(counts.out_of_scope, 1U);
+    EXPECT_EQ(counts.depth_limit, 1U);
+    EXPECT_EQ(counts.queue_full, 1U);
+    EXPECT_EQ(counts.url_limit, 1U);
+    EXPECT_EQ(counts.added, frontier.accepted_count());
+}
+
+TEST(UrlFrontier, CountsRepeatedCapacityRejectionsAsAttemptsAndKeepsRetryEligibility)
+{
+    hfs::UrlFrontier frontier{{"example.org"}, {1, 3, 1}};
+    ASSERT_EQ(frontier.add_seed("https://example.org/a"), EnqueueResult::added);
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        EXPECT_EQ(frontier.add_seed("https://example.org/b"), EnqueueResult::queue_full);
+    }
+    ASSERT_TRUE(frontier.pop());
+    ASSERT_EQ(frontier.add_seed("https://example.org/b"), EnqueueResult::added);
+    const auto counts = frontier.admission_counts();
+    EXPECT_EQ(counts.added, 2U);
+    EXPECT_EQ(counts.queue_full, 3U);
+    EXPECT_EQ(counts.duplicate, 0U);
+    EXPECT_EQ(frontier.size(), 1U);
+}

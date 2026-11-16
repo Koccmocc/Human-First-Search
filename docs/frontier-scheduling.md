@@ -108,3 +108,6 @@ before hashing/manifest writing. Files remain ignored locally.
 
 Live content and availability can change. These are observed results and local
 artifact identities, not guaranteed counts or hashes for future runs.
+
+The subsequent [admission counters](frontier-admission.md) make repeated
+capacity/scope/depth rejection attempts observable without changing this policy.

@@ -17,16 +17,31 @@ UrlFrontier::UrlFrontier(std::vector<std::string> allowed_hosts, FrontierLimits 
 
 auto UrlFrontier::add_seed(std::string_view url) -> EnqueueResult
 {
-    return enqueue(url, "", 0);
+    return record(enqueue(url, "", 0));
 }
 
 auto UrlFrontier::add_link(const CrawlTarget& parent, std::string_view reference) -> EnqueueResult
 {
     // Check before incrementing, including when a caller supplies SIZE_MAX depth.
     if (parent.depth >= limits_.max_depth) {
-        return EnqueueResult::depth_limit;
+        return record(EnqueueResult::depth_limit);
     }
-    return enqueue(parent.url, reference, parent.depth + 1);
+    return record(enqueue(parent.url, reference, parent.depth + 1));
+}
+
+auto UrlFrontier::record(EnqueueResult result) noexcept -> EnqueueResult
+{
+    // Count only completed calls. An allocation/parser exception has no outcome.
+    switch (result) {
+    case EnqueueResult::added: ++admission_.added; break;
+    case EnqueueResult::duplicate: ++admission_.duplicate; break;
+    case EnqueueResult::invalid_url: ++admission_.invalid_url; break;
+    case EnqueueResult::out_of_scope: ++admission_.out_of_scope; break;
+    case EnqueueResult::depth_limit: ++admission_.depth_limit; break;
+    case EnqueueResult::queue_full: ++admission_.queue_full; break;
+    case EnqueueResult::url_limit: ++admission_.url_limit; break;
+    }
+    return result;
 }
 
 auto UrlFrontier::enqueue(std::string_view base, std::string_view reference,
@@ -114,6 +129,11 @@ auto UrlFrontier::size() const noexcept -> std::size_t
 auto UrlFrontier::accepted_count() const noexcept -> std::size_t
 {
     return known_.size();
+}
+
+auto UrlFrontier::admission_counts() const noexcept -> AdmissionCounts
+{
+    return admission_;
 }
 
 } // namespace hfs

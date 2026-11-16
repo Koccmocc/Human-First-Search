@@ -27,6 +27,16 @@ struct CrawlTarget {
 
 enum class EnqueueResult { added, duplicate, invalid_url, out_of_scope, depth_limit, queue_full, url_limit };
 
+struct AdmissionCounts {
+    std::size_t added{};
+    std::size_t duplicate{};
+    std::size_t invalid_url{};
+    std::size_t out_of_scope{};
+    std::size_t depth_limit{};
+    std::size_t queue_full{};
+    std::size_t url_limit{};
+};
+
 // Single-threaded breadth-first traversal, with round-robin hosts at each depth.
 // Each host/depth keeps FIFO order. Accepted URLs stay known after popping.
 class UrlFrontier {
@@ -38,6 +48,8 @@ public:
     [[nodiscard]] auto pop() -> std::optional<CrawlTarget>;
     [[nodiscard]] auto size() const noexcept -> std::size_t;
     [[nodiscard]] auto accepted_count() const noexcept -> std::size_t;
+    // Snapshot of completed add_seed/add_link calls, including repeated rejections.
+    [[nodiscard]] auto admission_counts() const noexcept -> AdmissionCounts;
 
 private:
     struct HostQueue {
@@ -46,6 +58,7 @@ private:
     };
 
     auto enqueue(std::string_view base, std::string_view reference, std::size_t depth) -> EnqueueResult;
+    auto record(EnqueueResult result) noexcept -> EnqueueResult;
 
     std::vector<std::string> allowed_hosts_;
     FrontierLimits limits_;
@@ -53,6 +66,7 @@ private:
     std::map<std::size_t, std::list<HostQueue>> pending_;
     std::size_t pending_count_{};
     std::unordered_set<std::string> known_;
+    AdmissionCounts admission_;
 };
 
 } // namespace hfs

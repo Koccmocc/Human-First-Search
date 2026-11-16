@@ -101,7 +101,14 @@ void write_run_manifest(std::ostream& output, const CrawlCommand& command,
                      {"duplicate_pages", summary.duplicate_pages}, {"duplicate_texts", summary.duplicate_texts},
                      {"non_english_pages", summary.non_english_pages},
                      {"unknown_language_pages", summary.unknown_language_pages},
-                     {"rejected_seeds", summary.rejected_seeds}, {"pending_urls", summary.pending_urls}}},
+                     {"rejected_seeds", summary.rejected_seeds}, {"pending_urls", summary.pending_urls},
+                     {"admission_added", summary.admission.added},
+                     {"admission_duplicate", summary.admission.duplicate},
+                     {"admission_invalid_url", summary.admission.invalid_url},
+                     {"admission_out_of_scope", summary.admission.out_of_scope},
+                     {"admission_depth_limit", summary.admission.depth_limit},
+                     {"admission_queue_full", summary.admission.queue_full},
+                     {"admission_url_limit", summary.admission.url_limit}}},
         {"artifacts", {{"corpus", artifact(command.output_path)}, {"journal", artifact(command.log_path)}}}};
     // Strict serialization also rejects invalid UTF-8 before touching the output.
     const auto serialized = record.dump();
